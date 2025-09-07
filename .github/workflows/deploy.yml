@@ -45,3 +45,5 @@ jobs:
         service: car-auction
         image: docker.io/${{ secrets.DOCKER_USERNAME }}/car-auction:${{ github.sha }}
         region: asia-northeast3
+        env_vars: |
+          COMMIT_SHA=${{ github.sha }}
