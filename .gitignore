@@ -1,0 +1,10 @@
+# Crawl cache (do not commit)
+sources/.crawl_cache.json
+
+# Common
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+.DS_Store
+.env

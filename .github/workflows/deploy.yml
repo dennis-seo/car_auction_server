@@ -47,3 +47,5 @@ jobs:
         region: asia-northeast3
         env_vars: |
           COMMIT_SHA=${{ github.sha }}
+          ADMIN_TOKEN=${{ secrets.ADMIN_TOKEN }}
+          CRAWL_URL=${{ secrets.CRAWL_URL }}

@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "crawl-once",
+      "type": "shell",
+      "command": "${command:python.interpreterPath}",
+      "args": ["-m", "app.crawler"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PYTHONPATH": "${workspaceFolder}"
+        }
+      },
+      "problemMatcher": []
+    }
+  ]
+}

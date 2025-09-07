@@ -1,0 +1,44 @@
+name: Update Auction Data
+
+on:
+  schedule:
+    # 평일(월~금): 한국시간 20-22시 매 10분마다 (UTC 11-13시)
+    - cron: "0,10,20,30,40,50 11,12,13 * * 1-5"
+    # 주말(토~일): 한국시간 0,4,8시와 12,16,20시 (UTC 15,19,23,3,7,11)
+    - cron: "0 15,19,23 * * 6,0"
+    - cron: "0 3,7,11 * * 6,0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Trigger crawl on server
+        env:
+          SERVER_BASE_URL: ${{ secrets.SERVER_BASE_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SERVER_BASE_URL:-}" ] || [ -z "${ADMIN_TOKEN:-}" ]; then
+            echo "SERVER_BASE_URL and ADMIN_TOKEN secrets must be set" >&2
+            exit 1
+          fi
+          # call admin crawl endpoint (expects 200 OK)
+          http_code=$(curl -sS -o response.json -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "${SERVER_BASE_URL%/}/api/admin/crawl")
+          echo "HTTP ${http_code}" && cat response.json || true
+          if [ "${http_code}" != "200" ]; then
+            echo "Server returned HTTP ${http_code}" >&2
+            exit 1
+          fi

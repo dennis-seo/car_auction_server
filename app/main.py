@@ -1,5 +1,7 @@
 import os
 import sys
+import logging
+import threading
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,6 +12,9 @@ if __package__ is None or __package__ == "":
 
 from app.api.v1.routes.dates import router as dates_router
 from app.api.v1.routes.files import router as files_router
+from app.api.v1.routes.admin import router as admin_router
+from app.core.config import settings
+from app.crawler.downloader import download_if_changed
 
 
 def create_app() -> FastAPI:
@@ -27,6 +32,26 @@ def create_app() -> FastAPI:
     # Mount routers (keep paths identical to current API)
     app.include_router(dates_router, prefix="/api")
     app.include_router(files_router, prefix="/api")
+    app.include_router(admin_router, prefix="/api")
+
+    # Kick off one crawl attempt on startup (non-blocking)
+    logger = logging.getLogger("crawler")
+
+    @app.on_event("startup")
+    async def _startup_crawl_once() -> None:
+        url = getattr(settings, "CRAWL_URL", None)
+        if not url:
+            return
+
+        def _run():
+            try:
+                logger.info("Startup crawl: %s", url)
+                result = download_if_changed(url)
+                logger.info("Startup crawl result: %s", result)
+            except Exception as exc:
+                logger.error("Startup crawl failed: %s", exc)
+
+        threading.Thread(target=_run, daemon=True).start()
 
     return app
 

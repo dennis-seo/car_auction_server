@@ -1,0 +1,50 @@
+{
+  // VS Code Run and Debug configurations
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API Server (Uvicorn)",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--reload",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "crawl-once"
+    },
+    {
+      "name": "Crawler (download_if_changed)",
+      "type": "python",
+      "request": "launch",
+      "module": "app.crawler",
+      "args": [
+        "--ext",
+        "csv",
+        "--prefix",
+        "auction_data_"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    }
+  ]
+  ,
+  "compounds": [
+    {
+      "name": "API + Crawl Once",
+      "configurations": [
+        "Crawler (download_if_changed)",
+        "API Server (Uvicorn)"
+      ]
+    }
+  ]
+}
