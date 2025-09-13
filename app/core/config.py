@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     # Admin token for protected endpoints (set via .env or secrets)
     ADMIN_TOKEN: str = ""
 
+    # Firestore integration
+    FIRESTORE_ENABLED: bool = False
+    GCP_PROJECT: str = ""
+    FIRESTORE_COLLECTION: str = "auction_data"
+    # Standard Google ADC via env var `GOOGLE_APPLICATION_CREDENTIALS` is used if present
+    GOOGLE_APPLICATION_CREDENTIALS: str = ""
+
     # pydantic-settings v2 style config
     model_config = SettingsConfigDict(
         env_file=os.getenv("ENV_FILE", _PROJECT_ROOT_ENV),
