@@ -53,6 +53,7 @@ def download_if_changed(
     file_ext: str = "csv",
     date_override: Optional[str] = None,
     timeout: Tuple[float, float] = (3.0, 15.0),
+    return_bytes_on_no_change: bool = False,
 ) -> dict:
     """
     Download URL only if server/content changed.
@@ -80,7 +81,18 @@ def download_if_changed(
         return {"changed": False, "status": 0, "path": None}
 
     if resp.status_code == 304:
-        return {"changed": False, "status": 304, "path": None}
+        if not return_bytes_on_no_change:
+            return {"changed": False, "status": 304, "path": None}
+        # Re-fetch without validators to obtain content bytes
+        try:
+            logger.info("Re-fetching without validators to obtain content bytes")
+            resp2 = requests.get(url, timeout=timeout)
+            if resp2.status_code != 200:
+                return {"changed": False, "status": resp2.status_code, "path": None}
+            resp = resp2
+        except Exception as exc:
+            logger.error("Refetch failed: %s", exc)
+            return {"changed": False, "status": 0, "path": None}
 
     if resp.status_code != 200:
         logger.error("Unexpected status: %s %s", resp.status_code, getattr(resp, "reason", ""))
@@ -90,7 +102,17 @@ def download_if_changed(
     content_hash = _hash_bytes(content)
     if entry.get("hash") == content_hash:
         # No byte-level change
-        return {"changed": False, "status": 200, "path": None}
+        if not return_bytes_on_no_change:
+            return {"changed": False, "status": 200, "path": None}
+        date_part = date_override or _date_stamp()
+        filename = f"{filename_prefix}{date_part}.{file_ext}"
+        return {
+            "changed": False,
+            "status": 200,
+            "path": None,
+            "content": content,
+            "filename": filename,
+        }
 
     # Build destination filename
     date_part = date_override or _date_stamp()
@@ -118,4 +140,5 @@ def download_if_changed(
     else:
         logger.info("New file saved: %s (size=%d bytes)", abs_dest, len(content))
 
-    return {"changed": True, "status": 200, "path": abs_dest}
+    result: dict = {"changed": True, "status": 200, "path": abs_dest}
+    return result

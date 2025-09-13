@@ -12,4 +12,3 @@ def get_dates() -> list[str]:
         return list_available_dates()
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Failed to list dates") from exc
-
