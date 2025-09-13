@@ -9,6 +9,7 @@ router = APIRouter()
 
 
 @router.get("/csv/{date}")
+@router.get("/files/{date}")
 def get_csv(date: str):
     try:
         # Firestore mode: fetch bytes and return direct response
