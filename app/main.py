@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
                 # Firestore config summary (safe)
                 import os as _os
                 from datetime import datetime as _dt
+                from app.utils.bizdate import next_business_day
                 logger.info(
                     "Firestore config: enabled=%s project=%s collection=%s creds=%s",
                     getattr(settings, "FIRESTORE_ENABLED", False),
@@ -60,17 +61,8 @@ def create_app() -> FastAPI:
                     getattr(settings, "FIRESTORE_COLLECTION", "auction_data"),
                     _os.path.basename(_os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "<env-not-set>"),
                 )
-                # Decide date key (YYMMDD) for Firestore existence check
-                date_key = _dt.now().strftime("%y%m%d")
-                if settings.FIRESTORE_ENABLED and firestore_repo is not None:
-                    exists = None
-                    try:
-                        exists = firestore_repo.get_csv(date_key)  # type: ignore[attr-defined]
-                    except Exception as exc:
-                        logger.error("Firestore pre-check failed: %s", exc)
-                    if exists is not None:
-                        logger.info("Firestore already has today's document: %s; skipping crawl", date_key)
-                        return
+                # Decide source date for crawler (YYMMDD)
+                src_date = _dt.now().strftime("%y%m%d")
 
                 logger.info("Startup crawl (pre-checked Firestore): %s", url)
                 result = download_if_changed(url, return_bytes_on_no_change=True)
@@ -86,12 +78,27 @@ def create_app() -> FastAPI:
                             content = f.read()
                     else:
                         content = result.get("content")
-                        filename = result.get("filename") or f"auction_data_{date_key}.csv"
-                    # If date_key wasn't parsed, try from filename
-                    if filename and not date_key and filename.startswith("auction_data_") and filename.endswith(".csv"):
-                        date_key = filename[len("auction_data_") : -len(".csv")]
-                    if content and filename and date_key:
-                        firestore_repo.save_csv(date_key, filename, content)  # type: ignore[attr-defined]
+                        filename = result.get("filename") or f"auction_data_{src_date}.csv"
+                    # Try to parse src_date from filename if possible
+                    if filename and filename.startswith("auction_data_") and filename.endswith(".csv"):
+                        try:
+                            src_date = filename[len("auction_data_") : -len(".csv")]
+                        except Exception:
+                            pass
+                    # Map to target business date and upload when changed or missing
+                    try:
+                        target_date = next_business_day(src_date)
+                    except Exception:
+                        target_date = src_date
+                    should_upload = bool(result.get("changed"))
+                    if content and filename:
+                        # If doc is missing, upload regardless of changed
+                        try:
+                            exists = firestore_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                        except Exception:
+                            exists = None
+                        if exists is None or should_upload:
+                            firestore_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.error("Startup crawl failed: %s", exc)
 
