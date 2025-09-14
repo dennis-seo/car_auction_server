@@ -15,6 +15,7 @@ permissions:
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    environment: crawling
     steps:
       - name: Checkout
         uses: actions/checkout@v4
