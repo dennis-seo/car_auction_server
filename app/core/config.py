@@ -21,10 +21,15 @@ class Settings(BaseSettings):
 
     # Firestore integration
     FIRESTORE_ENABLED: bool = False
+    # Primary project id; if empty, fallback to GCP_PROJECT_ID
     GCP_PROJECT: str = ""
+    # Alternative env commonly used in other systems
+    GCP_PROJECT_ID: str = ""
     FIRESTORE_COLLECTION: str = "auction_data"
     # Standard Google ADC via env var `GOOGLE_APPLICATION_CREDENTIALS` is used if present
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
+    # Alternative credential input: path, raw JSON, or base64 JSON
+    GCP_SA_KEY: str = ""
 
     # pydantic-settings v2 style config
     model_config = SettingsConfigDict(
