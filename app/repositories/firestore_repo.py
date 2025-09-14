@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import os
+import tempfile
 from typing import List, Optional, Tuple
 
 from app.core.config import settings
@@ -10,6 +12,7 @@ from app.core.config import settings
 
 logger = logging.getLogger("firestore")
 _CLIENT = None
+_TEMP_CRED_PATH: Optional[str] = None
 
 
 def _running_on_gcp() -> bool:
@@ -29,10 +32,13 @@ def _ensure_client():
     if not settings.FIRESTORE_ENABLED:
         raise RuntimeError("Firestore is not enabled")
 
+    # Ensure ADC env var from alternative inputs (GCP_SA_KEY)
+    _ensure_credentials_env()
+
     cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     cred_exists = bool(cred_path and os.path.isfile(cred_path))
     on_gcp = _running_on_gcp()
-    project_hint = settings.GCP_PROJECT or "<auto>"
+    project_hint = settings.GCP_PROJECT or settings.GCP_PROJECT_ID or "<auto>"
     logger.info(
         "Initializing Firestore: enabled=%s, project=%s, creds=%s (%s), on_gcp=%s",
         settings.FIRESTORE_ENABLED,
@@ -62,10 +68,11 @@ def _ensure_client():
                 restore_env = None
 
         try:
-            if not settings.GCP_PROJECT:
+            project_to_use = settings.GCP_PROJECT or settings.GCP_PROJECT_ID
+            if not project_to_use:
                 _CLIENT = firestore.Client()  # type: ignore
             else:
-                _CLIENT = firestore.Client(project=settings.GCP_PROJECT)  # type: ignore
+                _CLIENT = firestore.Client(project=project_to_use)  # type: ignore
         finally:
             if restore_env is not None:
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = restore_env
@@ -154,3 +161,56 @@ def get_csv(date: str) -> Optional[Tuple[bytes, str]]:
         except Exception:
             return None
     return None
+
+
+def _ensure_credentials_env() -> Optional[str]:
+    """Populate GOOGLE_APPLICATION_CREDENTIALS from GCP_SA_KEY when needed.
+
+    Accepts three forms in settings.GCP_SA_KEY:
+      1) Absolute/relative path to a JSON key file
+      2) Raw JSON string
+      3) Base64-encoded JSON string
+    """
+    global _TEMP_CRED_PATH
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        return os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+    key = (settings.GCP_SA_KEY or "").strip()
+    if not key:
+        return None
+
+    # Case 1: Provided as a path
+    if os.path.isfile(key):
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = key
+        return key
+
+    # Try to interpret as raw JSON first
+    json_text: Optional[str] = None
+    try:
+        obj = json.loads(key)
+        if isinstance(obj, dict):
+            json_text = json.dumps(obj)
+    except Exception:
+        # Try base64 -> JSON
+        try:
+            decoded = base64.b64decode(key)
+            obj = json.loads(decoded.decode("utf-8"))
+            if isinstance(obj, dict):
+                json_text = json.dumps(obj)
+        except Exception:
+            json_text = None
+
+    if not json_text:
+        return None
+
+    # Persist to a temp file once per process
+    if _TEMP_CRED_PATH and os.path.isfile(_TEMP_CRED_PATH):
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _TEMP_CRED_PATH
+        return _TEMP_CRED_PATH
+
+    fd, tmp_path = tempfile.mkstemp(prefix="gcp_sa_", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(json_text)
+    _TEMP_CRED_PATH = tmp_path
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = tmp_path
+    return tmp_path
