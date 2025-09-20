@@ -1,0 +1,61 @@
+###
+# REST Client requests for Car Auction API
+# VS Code REST Client: click "Send Request" on each block as needed.
+# Update the variables below if your endpoints change.
+
+@localBase = http://localhost:8000
+@cloudBase = https://car-auction-849074372493.asia-northeast3.run.app
+@token = !CQ[K>|0qanS4CIxl:+a.%5^oUShm08J>zJ<z0(q#MTe
+
+###
+# Ping local dates endpoint
+GET {{localBase}}/api/dates
+
+###
+# Ping Cloud Run dates endpoint (variable)
+GET {{cloudBase}}/api/dates
+
+###
+# Ping Cloud Run dates endpoint (direct URL)
+GET https://car-auction-849074372493.asia-northeast3.run.app/api/dates
+
+###
+# Download CSV by date — local alias
+GET {{localBase}}/api/csv/250915
+Accept: text/csv
+
+###
+# Download CSV by date — local file path
+GET {{localBase}}/api/files/250915
+Accept: text/csv
+
+###
+# Download CSV by date — Cloud Run alias
+GET {{cloudBase}}/api/csv/250915
+Accept: text/csv
+
+###
+# Download CSV by date — Cloud Run file path
+GET {{cloudBase}}/api/files/250915
+Accept: text/csv
+
+###
+# Admin: crawl now (local). Add force=true to overwrite if doc exists/changed.
+POST {{localBase}}/api/admin/crawl?force=true
+Authorization: Bearer {{token}}
+
+###
+# Admin: crawl now (Cloud Run)
+POST {{cloudBase}}/api/admin/crawl?force=true
+Authorization: Bearer {{token}}
+
+###
+# Admin: ensure a specific source date exists in Firestore (uploads under next business day) — local
+# Example: ensure source 250908 => stores under 250909
+POST {{localBase}}/api/admin/ensure/250908
+Authorization: Bearer {{token}}
+
+###
+# Admin: ensure (Cloud Run)
+POST {{cloudBase}}/api/admin/ensure/250908
+Authorization: Bearer {{token}}
