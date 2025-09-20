@@ -1,0 +1,24 @@
+{
+  "client": "Thunder Client",
+  "environmentName": "Car Auction",
+  "environmentId": "env-car-auction",
+  "dateExported": "2025-09-20T02:07:10.000Z",
+  "version": "1.1",
+  "keyValue": [
+    {
+      "name": "localBase",
+      "value": "http://localhost:8000",
+      "isSecret": false
+    },
+    {
+      "name": "cloudBase",
+      "value": "https://car-auction-849074372493.asia-northeast3.run.app",
+      "isSecret": false
+    },
+    {
+      "name": "token",
+      "value": "!CQ[K>|0qanS4CIxl:+a.%5^oUShm08J>zJ<z0(q#MTe",
+      "isSecret": true
+    }
+  ]
+}

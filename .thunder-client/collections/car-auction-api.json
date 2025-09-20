@@ -1,0 +1,241 @@
+{
+  "client": "Thunder Client",
+  "collectionName": "Car Auction API",
+  "collectionId": "col-car-auction",
+  "dateExported": "2025-09-20T02:07:04.000Z",
+  "version": "1.1",
+  "folders": [],
+  "requests": [
+    {
+      "_id": "req-local-dates",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Get dates (local)",
+      "url": "http://localhost:8000/api/dates",
+      "method": "GET",
+      "sortNum": 10000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "req-cloud-dates",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Get dates (cloud)",
+      "url": "https://car-auction-849074372493.asia-northeast3.run.app/api/dates",
+      "method": "GET",
+      "sortNum": 20000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "req-local-csv",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Download CSV 250915 (local csv)",
+      "url": "http://localhost:8000/api/csv/250915",
+      "method": "GET",
+      "sortNum": 30000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [
+        {
+          "name": "Accept",
+          "value": "text/csv"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "req-local-files",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Download CSV 250915 (local files)",
+      "url": "http://localhost:8000/api/files/250915",
+      "method": "GET",
+      "sortNum": 40000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [
+        {
+          "name": "Accept",
+          "value": "text/csv"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "req-cloud-csv",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Download CSV 250915 (cloud csv)",
+      "url": "https://car-auction-849074372493.asia-northeast3.run.app/api/csv/250915",
+      "method": "GET",
+      "sortNum": 50000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [
+        {
+          "name": "Accept",
+          "value": "text/csv"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "req-cloud-files",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Download CSV 250915 (cloud files)",
+      "url": "https://car-auction-849074372493.asia-northeast3.run.app/api/files/250915",
+      "method": "GET",
+      "sortNum": 60000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [
+        {
+          "name": "Accept",
+          "value": "text/csv"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "req-local-crawl",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Admin crawl now (local)",
+      "url": "http://localhost:8000/api/admin/crawl",
+      "method": "POST",
+      "sortNum": 70000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer YOUR_ADMIN_TOKEN"
+        }
+      ],
+      "params": [
+        {
+          "name": "force",
+          "value": "true"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "req-cloud-crawl",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Admin crawl now (cloud)",
+      "url": "https://car-auction-849074372493.asia-northeast3.run.app/api/admin/crawl",
+      "method": "POST",
+      "sortNum": 80000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer YOUR_ADMIN_TOKEN"
+        }
+      ],
+      "params": [
+        {
+          "name": "force",
+          "value": "true"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "req-local-ensure",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Admin ensure 250908 (local)",
+      "url": "http://localhost:8000/api/admin/ensure/250908",
+      "method": "POST",
+      "sortNum": 90000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer YOUR_ADMIN_TOKEN"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "req-cloud-ensure",
+      "colId": "col-car-auction",
+      "containerId": "",
+      "name": "Admin ensure 250908 (cloud)",
+      "url": "https://car-auction-849074372493.asia-northeast3.run.app/api/admin/ensure/250908",
+      "method": "POST",
+      "sortNum": 100000,
+      "created": 1758334024034,
+      "modified": 1758334024034,
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer YOUR_ADMIN_TOKEN"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": ""
+      },
+      "tests": []
+    }
+  ],
+  "settings": {}
+}
