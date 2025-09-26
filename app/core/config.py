@@ -1,4 +1,4 @@
-import os
+﻿import os
 from pathlib import Path
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,13 +19,18 @@ class Settings(BaseSettings):
     # Admin token for protected endpoints (set via .env or secrets)
     ADMIN_TOKEN: str = ""
 
-    # Firestore integration
-    FIRESTORE_ENABLED: bool = False
-    # Primary project id; if empty, fallback to GCP_PROJECT_ID
+    # Shared Google Cloud hints
     GCP_PROJECT: str = ""
-    # Alternative env commonly used in other systems
     GCP_PROJECT_ID: str = ""
-    FIRESTORE_COLLECTION: str = "auction_data"
+
+    # Cloud Spanner integration
+    SPANNER_ENABLED: bool = False
+    SPANNER_PROJECT: str = ""
+    SPANNER_INSTANCE: str = ""
+    SPANNER_DATABASE: str = ""
+    SPANNER_TABLE: str = "auction_data"
+    SPANNER_EMULATOR_HOST: str = ""
+
     # Standard Google ADC via env var `GOOGLE_APPLICATION_CREDENTIALS` is used if present
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
     # Alternative credential input: path, raw JSON, or base64 JSON

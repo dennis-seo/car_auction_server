@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+﻿from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response
 
 from app.services.csv_service import get_csv_path_for_date, get_csv_content_for_date
@@ -12,8 +12,8 @@ router = APIRouter()
 @router.get("/files/{date}")
 def get_csv(date: str):
     try:
-        # Firestore mode: fetch bytes and return direct response
-        if settings.FIRESTORE_ENABLED:
+        # Spanner mode: fetch bytes and return direct response
+        if settings.SPANNER_ENABLED:
             content, filename = get_csv_content_for_date(date)
             if content is None:
                 raise HTTPException(status_code=404, detail="CSV not found")
@@ -35,3 +35,4 @@ def get_csv(date: str):
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Failed to fetch CSV") from exc
+
