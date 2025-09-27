@@ -12,10 +12,8 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     spanner_repo = None  # type: ignore
 
-
 def list_available_dates() -> list[str]:
     if settings.SPANNER_ENABLED and spanner_repo is not None:
-        # 스패너 모드에서는 예외를 숨기지 않고 그대로 노출해 연결 상태를 확인한다.
         return spanner_repo.list_dates()  # type: ignore[attr-defined]
     files = list_auction_csv_files()
     mapped: set[str] = set()

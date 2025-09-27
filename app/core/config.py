@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # Admin token for protected endpoints (set via .env or secrets)
     ADMIN_TOKEN: str = ""
 
+    # Firestore integration
+    FIRESTORE_ENABLED: bool = False
+    FIRESTORE_COLLECTION: str = "auction_data"
+
     # Spanner integration
     SPANNER_ENABLED: bool = False
     # Primary project id; if empty, fallback to GCP_PROJECT_ID

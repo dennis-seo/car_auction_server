@@ -20,6 +20,11 @@ try:
 except Exception:
     spanner_repo = None  # type: ignore
 
+try:
+    from app.repositories import firestore_repo  # type: ignore
+except Exception:
+    firestore_repo = None  # type: ignore
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -61,13 +66,10 @@ def create_app() -> FastAPI:
                 from datetime import datetime as _dt
                 from app.utils.bizdate import next_business_day
                 logger.info(
-                    "Spanner config: enabled=%s project=%s instance=%s database=%s items_table=%s metadata_table=%s creds=%s",
+                    "Backend config: spanner_enabled=%s firestore_enabled=%s project=%s creds=%s",
                     getattr(settings, "SPANNER_ENABLED", False),
+                    getattr(settings, "FIRESTORE_ENABLED", False),
                     getattr(settings, "GCP_PROJECT", "<auto>"),
-                    getattr(settings, "SPANNER_INSTANCE", "<unset>"),
-                    getattr(settings, "SPANNER_DATABASE", "<unset>"),
-                    getattr(settings, "SPANNER_ITEMS_TABLE", "auction_items"),
-                    getattr(settings, "SPANNER_METADATA_TABLE", "auction_batches"),
                     _os.path.basename(_os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "<env-not-set>"),
                 )
                 # Decide source date for crawler (YYMMDD)
@@ -82,38 +84,59 @@ def create_app() -> FastAPI:
                     result.get("filename"),
                     result.get("path"),
                 )
-                if settings.SPANNER_ENABLED and spanner_repo is not None and (result.get("path") or result.get("content")):
+                if result.get("path") or result.get("content"):
                     import os
+
                     content = None
                     filename = None
                     if result.get("path"):
                         path = result["path"]
                         filename = os.path.basename(path)
-                        with open(path, "rb") as f:
-                            content = f.read()
+                        try:
+                            with open(path, "rb") as f:
+                                content = f.read()
+                        except Exception as exc:
+                            logger.error("Failed to read downloaded file %s: %s", path, exc)
+                            content = result.get("content")
                     else:
                         content = result.get("content")
                         filename = result.get("filename") or f"auction_data_{src_date}.csv"
-                    # Try to parse src_date from filename if possible
+
                     if filename and filename.startswith("auction_data_") and filename.endswith(".csv"):
                         try:
                             src_date = filename[len("auction_data_") : -len(".csv")]
                         except Exception:
                             pass
-                    # Map to target business date and upload when changed or missing
+
                     try:
                         target_date = next_business_day(src_date)
                     except Exception:
                         target_date = src_date
-                    should_upload = bool(result.get("changed"))
+
                     if content and filename:
-                        # If doc is missing, upload regardless of changed
-                        try:
-                            exists = spanner_repo.get_csv(target_date)  # type: ignore[attr-defined]
-                        except Exception:
-                            exists = None
-                        if exists is None or should_upload:
-                            spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                        should_upload = bool(result.get("changed"))
+
+                        if settings.SPANNER_ENABLED and spanner_repo is not None:
+                            try:
+                                try:
+                                    exists = spanner_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                                except Exception:
+                                    exists = None
+                                if exists is None or should_upload:
+                                    spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                            except Exception as exc:
+                                logger.error("Spanner upload failed: %s", exc)
+
+                        if settings.FIRESTORE_ENABLED and firestore_repo is not None:
+                            try:
+                                try:
+                                    exists_fs = firestore_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                                except Exception:
+                                    exists_fs = None
+                                if exists_fs is None or should_upload:
+                                    firestore_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                            except Exception as exc:
+                                logger.error("Firestore upload failed: %s", exc)
             except Exception as exc:
                 logger.error("Startup crawl failed: %s", exc)
 

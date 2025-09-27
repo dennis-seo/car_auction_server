@@ -106,22 +106,34 @@ def main(argv: list[str] | None = None) -> int:
     )
     logger = logging.getLogger("backfill")
 
-    # Validate Spanner configuration early unless dry-run
+    firestore_enabled = False
+
+    # Validate backend configuration early unless dry-run
     if not args.dry_run:
         if not settings.SPANNER_ENABLED:
             logger.error("SPANNER_ENABLED is false. Enable it in .env or environment.")
             return 2
         try:
             from app.repositories import spanner_repo  # type: ignore
-            # Probe client initialization early to fail fast on config errors
+
             try:
                 spanner_repo._ensure_database()  # type: ignore[attr-defined]
-            except Exception as exc:  # pragma: no cover - environment dependent
+            except Exception as exc:  # pragma: no cover
                 logger.error("Failed to initialize Spanner client: %s", exc)
                 return 2
-        except Exception as exc:  # pragma: no cover - optional dep import
+        except Exception as exc:  # pragma: no cover
             logger.error("Failed to import Spanner repo or dependency: %s", exc)
             return 2
+
+        if settings.FIRESTORE_ENABLED:
+            try:
+                from app.repositories import firestore_repo  # type: ignore
+
+                firestore_repo._ensure_client()  # type: ignore[attr-defined]
+                firestore_enabled = True
+            except Exception as exc:  # pragma: no cover
+                logger.error("Failed to initialize Firestore client: %s", exc)
+                return 2
     else:
         spanner_repo = None  # type: ignore
 
@@ -136,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
     skipped_badname = 0
     skipped_large = 0
     uploaded = 0
+    fs_uploaded = 0
+    fs_skipped_exists = 0
 
     for path in _iter_source_files(directory, pattern):
         if args.limit and processed >= args.limit:
@@ -179,6 +193,14 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         from app.repositories import spanner_repo  # type: ignore
+        firestore_repo = None
+        if firestore_enabled:
+            from app.repositories import firestore_repo as _firestore_repo  # type: ignore
+
+            firestore_repo = _firestore_repo
+
+        spanner_should_upload = True
+        firestore_should_upload = firestore_repo is not None
 
         if not args.overwrite:
             try:
@@ -186,26 +208,50 @@ def main(argv: list[str] | None = None) -> int:
             except Exception:
                 exists = None
             if exists is not None:
+                spanner_should_upload = False
                 skipped_exists += 1
                 logger.info("Skip (exists): row=%s", target_date)
-                continue
+
+            if firestore_repo is not None:
+                try:
+                    exists_fs = firestore_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                except Exception:
+                    exists_fs = None
+                if exists_fs is not None:
+                    firestore_should_upload = False
+                    fs_skipped_exists += 1
+                    logger.info("Skip Firestore (exists): row=%s", target_date)
+
+        if not spanner_should_upload and not firestore_should_upload:
+            continue
 
         try:
             with open(path, "rb") as f:
                 content = f.read()
             filename = os.path.basename(path)
-            spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
-            uploaded += 1
+
+            if spanner_should_upload:
+                spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                uploaded += 1
+
+            if firestore_should_upload and firestore_repo is not None:
+                try:
+                    firestore_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                    fs_uploaded += 1
+                except Exception as exc:
+                    logger.error("Firestore upload failed for %s: %s", os.path.basename(path), exc)
         except Exception as exc:
             logger.error("Upload failed for %s: %s", os.path.basename(path), exc)
 
     logger.info(
-        "Done. processed=%d, uploaded=%d, skipped_exists=%d, skipped_badname=%d, skipped_large=%d",
+        "Done. processed=%d, uploaded=%d, skipped_exists=%d, skipped_badname=%d, skipped_large=%d, firestore_uploaded=%d, firestore_skipped=%d",
         processed,
         uploaded,
         skipped_exists,
         skipped_badname,
         skipped_large,
+        fs_uploaded,
+        fs_skipped_exists,
     )
     if not args.dry_run and uploaded == 0:
         return 3

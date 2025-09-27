@@ -13,6 +13,11 @@ try:
 except Exception:
     spanner_repo = None  # type: ignore
 
+try:
+    from app.repositories import firestore_repo  # type: ignore
+except Exception:
+    firestore_repo = None  # type: ignore
+
 
 router = APIRouter()
 
@@ -60,37 +65,65 @@ def admin_crawl(
             date_override=src_date,
             return_bytes_on_no_change=True,
         )
-        # If Spanner is enabled, upload when changed, or when row doesn't exist yet
-        if settings.SPANNER_ENABLED and spanner_repo is not None and (result.get("path") or result.get("content")):
+        import os
+        content = None
+        filename = None
+        if result.get("path"):
             try:
-                # Determine whether target already exists
+                path = result["path"]
+                filename = os.path.basename(path)
+                with open(path, "rb") as f:
+                    content = f.read()
+            except Exception as fe:
+                result["read_error"] = str(fe)
+                content = result.get("content")
+                filename = filename or result.get("filename") or f"{prefix}{src_date}.{ext}"
+        else:
+            content = result.get("content")
+            filename = result.get("filename") or f"{prefix}{src_date}.{ext}"
+
+        # If Spanner is enabled, upload when changed, or when row doesn't exist yet
+        if settings.SPANNER_ENABLED and spanner_repo is not None and content:
+            try:
                 try:
                     exists = spanner_repo.get_csv(target_date)  # type: ignore[attr-defined]
                 except Exception:
                     exists = None
-                import os
-                content = None
-                filename = None
-                if result.get("path"):
-                    path = result["path"]
-                    filename = os.path.basename(path)
-                    with open(path, "rb") as f:
-                        content = f.read()
-                else:
-                    content = result.get("content")
-                    filename = result.get("filename") or f"{prefix}{src_date}.{ext}"
-
-                should_upload = bool(result.get("changed")) or (exists is None) or force
-                if should_upload and content and filename:
+                should_upload_spanner = bool(result.get("changed")) or (exists is None) or force
+                if should_upload_spanner and filename:
                     spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
                     result["uploaded_to_spanner"] = True
-                    result["spanner_row_id"] = target_date
                 else:
                     result["uploaded_to_spanner"] = False
-                    result["spanner_row_id"] = target_date
+                result["spanner_row_id"] = target_date
             except Exception as fe:
                 result["uploaded_to_spanner"] = False
                 result["spanner_error"] = str(fe)
+
+        if settings.FIRESTORE_ENABLED and firestore_repo is not None and content:
+            try:
+                try:
+                    exists_fs = firestore_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                except Exception:
+                    exists_fs = None
+                should_upload_fs = bool(result.get("changed")) or (exists_fs is None) or force
+                if should_upload_fs and filename:
+                    firestore_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                    result["uploaded_to_firestore"] = True
+                else:
+                    result["uploaded_to_firestore"] = False
+                result["firestore_doc_id"] = target_date
+            except Exception as fe:
+                result["uploaded_to_firestore"] = False
+                result["firestore_error"] = str(fe)
+        if settings.SPANNER_ENABLED and spanner_repo is not None and "spanner_row_id" not in result:
+            result["spanner_row_id"] = target_date
+        if settings.SPANNER_ENABLED and spanner_repo is not None and "uploaded_to_spanner" not in result:
+            result["uploaded_to_spanner"] = False
+        if settings.FIRESTORE_ENABLED and firestore_repo is not None and "firestore_doc_id" not in result:
+            result["firestore_doc_id"] = target_date
+        if settings.FIRESTORE_ENABLED and firestore_repo is not None and "uploaded_to_firestore" not in result:
+            result["uploaded_to_firestore"] = False
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"crawl failed: {exc}") from exc
@@ -113,71 +146,103 @@ def admin_ensure_date(
     if not settings.ADMIN_TOKEN or token != settings.ADMIN_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    if not settings.SPANNER_ENABLED or spanner_repo is None:
-        raise HTTPException(status_code=400, detail="Spanner is not enabled/configured")
+    spanner_enabled = settings.SPANNER_ENABLED and spanner_repo is not None
+    firestore_enabled = settings.FIRESTORE_ENABLED and firestore_repo is not None
+
+    if not (spanner_enabled or firestore_enabled):
+        raise HTTPException(status_code=400, detail="No storage backend is enabled")
 
     try:
         # Treat the path parameter as the source/original date
         src_date = date
         target_date = next_business_day(src_date)
 
-        # 1) Check Spanner existence for target date first
-        try:
-            exists = spanner_repo.get_csv(target_date)  # type: ignore[attr-defined]
-        except Exception:
-            exists = None
-        if exists is not None:
-            return {
+        filename = f"auction_data_{src_date}.csv"
+
+        spanner_exists_before = None
+        firestore_exists_before = None
+        spanner_needs_upload = False
+        firestore_needs_upload = False
+        spanner_error = None
+        firestore_error = None
+
+        if spanner_enabled:
+            try:
+                exists = spanner_repo.get_csv(target_date)  # type: ignore[attr-defined]
+            except Exception as exc:
+                exists = None
+                spanner_error = f"check_failed: {exc}"
+            spanner_exists_before = exists is not None
+            spanner_needs_upload = not spanner_exists_before
+
+        if firestore_enabled:
+            try:
+                exists_fs = firestore_repo.get_csv(target_date)  # type: ignore[attr-defined]
+            except Exception as exc:
+                exists_fs = None
+                firestore_error = f"check_failed: {exc}"
+            firestore_exists_before = exists_fs is not None
+            firestore_needs_upload = not firestore_exists_before
+
+        if not spanner_needs_upload and not firestore_needs_upload:
+            response = {
                 "date": target_date,
-                "exists_before": True,
+                "exists_before": spanner_exists_before if spanner_enabled else firestore_exists_before,
                 "uploaded_to_spanner": False,
+                "uploaded_to_firestore": False,
                 "source": None,
             }
+            if spanner_exists_before is not None:
+                response["spanner_exists_before"] = spanner_exists_before
+            if firestore_exists_before is not None:
+                response["firestore_exists_before"] = firestore_exists_before
+            if spanner_error:
+                response["spanner_error"] = spanner_error
+            if firestore_error:
+                response["firestore_error"] = firestore_error
+            return response
 
-        # 2) Try local file from sources using source date
-        filename = f"auction_data_{src_date}.csv"
-        path = resolve_csv_filepath(filename)
-        last_error = None
-        if path:
-            try:
-                with open(path, "rb") as f:
-                    content = f.read()
-                spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
-                return {
-                    "date": target_date,
-                    "exists_before": False,
-                    "uploaded_to_spanner": True,
-                    "source": "local",
-                }
-            except Exception as fe:
-                # Fall through to downloader attempt with error context
-                last_error = f"local_upload_failed: {fe}"
-
-        # 3) Attempt download using configured CRAWL_URL with src_date override
-        if not settings.CRAWL_URL:
-            raise HTTPException(status_code=400, detail="CRAWL_URL not configured")
-        result = download_if_changed(
-            settings.CRAWL_URL,
-            file_ext="csv",
-            filename_prefix="auction_data_",
-            date_override=src_date,
-            return_bytes_on_no_change=True,
-        )
         content = None
-        filename = result.get("filename") or filename
-        if result.get("path"):
-            import os
-            p = result["path"]
-            filename = os.path.basename(p) or filename
-            try:
-                with open(p, "rb") as f:
-                    content = f.read()
-            except Exception as fe:
-                # Could not read the downloaded file path; rely on 'content' if present
+        source_used = None
+        last_error = None
+
+        if spanner_needs_upload or firestore_needs_upload:
+            path = resolve_csv_filepath(filename)
+            if path:
+                try:
+                    with open(path, "rb") as f:
+                        content = f.read()
+                    source_used = "local"
+                except Exception as exc:
+                    last_error = f"local_read_failed: {exc}"
+
+        if content is None:
+            if not settings.CRAWL_URL:
+                raise HTTPException(status_code=400, detail="CRAWL_URL not configured")
+            result = download_if_changed(
+                settings.CRAWL_URL,
+                file_ext="csv",
+                filename_prefix="auction_data_",
+                date_override=src_date,
+                return_bytes_on_no_change=True,
+            )
+            filename = result.get("filename") or filename
+            if result.get("path"):
+                import os
+
+                p = result["path"]
+                filename = os.path.basename(p) or filename
+                try:
+                    with open(p, "rb") as f:
+                        content = f.read()
+                    source_used = "download"
+                except Exception as exc:
+                    content = result.get("content")
+                    last_error = f"read_download_path_failed: {exc}"
+            else:
                 content = result.get("content")
-                last_error = f"read_download_path_failed: {fe}"
-        else:
-            content = result.get("content")
+                if content is not None:
+                    source_used = "download"
 
         if not content:
             raise HTTPException(
@@ -188,16 +253,41 @@ def admin_ensure_date(
                 ),
             )
 
-        try:
-            spanner_repo.save_csv(target_date, filename or f"auction_data_{src_date}.csv", content)  # type: ignore[attr-defined]
-            return {
-                "date": target_date,
-                "exists_before": False,
-                "uploaded_to_spanner": True,
-                "source": "download",
-            }
-        except Exception as fe:
-            raise HTTPException(status_code=500, detail=f"spanner_upload_failed: {fe}")
+        uploaded_to_spanner = False
+        uploaded_to_firestore = False
+
+        if spanner_needs_upload and spanner_enabled:
+            try:
+                spanner_repo.save_csv(target_date, filename or f"auction_data_{src_date}.csv", content)  # type: ignore[attr-defined]
+                uploaded_to_spanner = True
+                spanner_exists_before = False
+            except Exception as exc:
+                spanner_error = f"upload_failed: {exc}"
+
+        if firestore_needs_upload and firestore_enabled:
+            try:
+                firestore_repo.save_csv(target_date, filename or f"auction_data_{src_date}.csv", content)  # type: ignore[attr-defined]
+                uploaded_to_firestore = True
+                firestore_exists_before = False
+            except Exception as exc:
+                firestore_error = f"upload_failed: {exc}"
+
+        response = {
+            "date": target_date,
+            "exists_before": spanner_exists_before if spanner_enabled else firestore_exists_before,
+            "uploaded_to_spanner": uploaded_to_spanner if spanner_enabled else False,
+            "uploaded_to_firestore": uploaded_to_firestore if firestore_enabled else False,
+            "source": source_used,
+        }
+        if spanner_exists_before is not None:
+            response["spanner_exists_before"] = spanner_exists_before
+        if firestore_exists_before is not None:
+            response["firestore_exists_before"] = firestore_exists_before
+        if spanner_error:
+            response["spanner_error"] = spanner_error
+        if firestore_error:
+            response["firestore_error"] = firestore_error
+        return response
     except HTTPException:
         raise
     except Exception as exc:
