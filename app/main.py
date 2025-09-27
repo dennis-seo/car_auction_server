@@ -22,7 +22,13 @@ except Exception:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Car Auction API", version="1.0.0")
+    app = FastAPI(
+        title="Car Auction API",
+        version="1.0.0",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
+    )
 
     # CORS: mirror behavior from the simple server
     app.add_middleware(

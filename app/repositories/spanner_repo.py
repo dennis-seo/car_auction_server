@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import tempfile
+from datetime import datetime
+from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from app.core.config import settings
@@ -307,6 +309,67 @@ def get_csv(date: str) -> Optional[Tuple[bytes, str]]:
     return output.getvalue().encode("utf-8"), filename
 
 
+def get_items(date: str) -> Optional[Dict[str, Any]]:
+    database = _ensure_database()
+    params = {"date": date}
+    param_types = {"date": _spanner_param_string()}
+
+    metadata_query = (
+        "SELECT source_filename, row_count, updated_at "
+        f"FROM {settings.SPANNER_METADATA_TABLE} WHERE date = @date"
+    )
+    with database.snapshot() as snapshot:
+        meta_rows = list(
+            snapshot.execute_sql(metadata_query, params=params, param_types=param_types)
+        )
+
+    if not meta_rows:
+        return None
+
+    meta_row = meta_rows[0]
+    source_filename = _decode_spanner_str(meta_row[0])
+    row_count_meta = _to_int(meta_row[1])
+    updated_at = meta_row[2]
+
+    columns = (
+        "row_order",
+        "sell_number",
+        "car_number",
+        "post_title",
+        "title",
+        "color",
+        "fuel",
+        "image",
+        "km",
+        "price",
+        "trans",
+        "year",
+        "auction_name",
+        "vin",
+        "score",
+        "created_at",
+    )
+    select_list = ", ".join(columns)
+    items_query = (
+        f"SELECT {select_list} FROM {settings.SPANNER_ITEMS_TABLE} "
+        "WHERE date = @date ORDER BY row_order"
+    )
+
+    with database.snapshot() as snapshot:
+        rows = list(
+            snapshot.execute_sql(items_query, params=params, param_types=param_types)
+        )
+
+    items = [_row_to_item_dict(row) for row in rows]
+    return {
+        "date": date,
+        "source_filename": source_filename or f"auction_data_{date}.csv",
+        "row_count": row_count_meta if row_count_meta is not None else len(items),
+        "updated_at": updated_at.isoformat() if isinstance(updated_at, datetime) else None,
+        "items": items,
+    }
+
+
 def _row_to_csv_values(row: Sequence[Any]) -> List[str]:
     sell_number,
     car_number,
@@ -344,6 +407,46 @@ def _row_to_csv_values(row: Sequence[Any]) -> List[str]:
         _fmt(vin),
         _fmt(score),
     ]
+
+
+def _row_to_item_dict(row: Sequence[Any]) -> Dict[str, Any]:
+    (
+        row_order,
+        sell_number,
+        car_number,
+        post_title,
+        title,
+        color,
+        fuel,
+        image,
+        km,
+        price,
+        trans,
+        year,
+        auction_name,
+        vin,
+        score,
+        created_at,
+    ) = row
+
+    return {
+        "row_order": _to_int(row_order),
+        "sell_number": _to_int(sell_number),
+        "car_number": _decode_spanner_str(car_number),
+        "post_title": _decode_spanner_str(post_title),
+        "title": _decode_spanner_str(title),
+        "color": _decode_spanner_str(color),
+        "fuel": _decode_spanner_str(fuel),
+        "image": _decode_spanner_str(image),
+        "km": _to_int(km),
+        "price": _to_int(price),
+        "trans": _decode_spanner_str(trans),
+        "year": _to_int(year),
+        "auction_name": _decode_spanner_str(auction_name),
+        "vin": _decode_spanner_str(vin),
+        "score": _decode_spanner_str(score),
+        "created_at": created_at.isoformat() if isinstance(created_at, datetime) else None,
+    }
 
 
 def _parse_csv_rows(content: bytes) -> List[Dict[str, Any]]:
@@ -395,6 +498,32 @@ def _normalize_row(raw: Dict[str, Any]) -> Dict[str, Any]:
             normalized[field] = value.strip()
 
     return normalized
+
+
+def _decode_spanner_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except Exception:
+            return None
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _to_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, Decimal):
+        return int(value)
+    try:
+        return int(value)
+    except Exception:
+        return None
 
 
 def _chunked(items: Sequence[Dict[str, Any]], size: int) -> Iterable[Sequence[Dict[str, Any]]]:
