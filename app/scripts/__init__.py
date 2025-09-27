@@ -1,1 +1,1 @@
-"""Utility scripts package for operational tasks (e.g., Firestore backfill)."""
+"""Utility scripts package for operational tasks (e.g., Spanner backfill)."""

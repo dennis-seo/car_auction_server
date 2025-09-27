@@ -12,8 +12,8 @@ router = APIRouter()
 @router.get("/files/{date}")
 def get_csv(date: str):
     try:
-        # Firestore mode: fetch bytes and return direct response
-        if settings.FIRESTORE_ENABLED:
+        # Spanner mode: fetch bytes and return direct response
+        if settings.SPANNER_ENABLED:
             content, filename = get_csv_content_for_date(date)
             if content is None:
                 raise HTTPException(status_code=404, detail="CSV not found")

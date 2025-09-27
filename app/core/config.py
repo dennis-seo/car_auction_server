@@ -19,13 +19,16 @@ class Settings(BaseSettings):
     # Admin token for protected endpoints (set via .env or secrets)
     ADMIN_TOKEN: str = ""
 
-    # Firestore integration
-    FIRESTORE_ENABLED: bool = False
+    # Spanner integration
+    SPANNER_ENABLED: bool = False
     # Primary project id; if empty, fallback to GCP_PROJECT_ID
     GCP_PROJECT: str = ""
     # Alternative env commonly used in other systems
     GCP_PROJECT_ID: str = ""
-    FIRESTORE_COLLECTION: str = "auction_data"
+    SPANNER_INSTANCE: str = ""
+    SPANNER_DATABASE: str = ""
+    SPANNER_ITEMS_TABLE: str = "auction_items"
+    SPANNER_METADATA_TABLE: str = "auction_batches"
     # Standard Google ADC via env var `GOOGLE_APPLICATION_CREDENTIALS` is used if present
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
     # Alternative credential input: path, raw JSON, or base64 JSON

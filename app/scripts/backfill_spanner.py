@@ -1,26 +1,23 @@
 from __future__ import annotations
 
 """
-Firestore backfill script from local sources directory.
+Cloud Spanner backfill script from local sources directory.
 
 Usage examples:
   - Dry run (no writes):
-      python -m app.scripts.backfill_firestore --dry-run
+      python -m app.scripts.backfill_spanner --dry-run
   - Real run with overwrite disabled (default):
-      python -m app.scripts.backfill_firestore
-  - Overwrite existing docs in Firestore:
-      python -m app.scripts.backfill_firestore --overwrite
+      python -m app.scripts.backfill_spanner
+  - Overwrite existing rows in Spanner:
+      python -m app.scripts.backfill_spanner --overwrite
   - Limit number of files processed:
-      python -m app.scripts.backfill_firestore --limit 50
+      python -m app.scripts.backfill_spanner --limit 50
 
 Prerequisites:
-  - FIRESTORE_ENABLED=true in environment or .env
-  - GCP_PROJECT (or use ADC project)
+  - SPANNER_ENABLED=true in environment or .env
+  - SPANNER_INSTANCE, SPANNER_DATABASE, SPANNER_ITEMS_TABLE configured
+  - GCP_PROJECT (or rely on Application Default Credentials)
   - GOOGLE_APPLICATION_CREDENTIALS pointing to a valid service account JSON (when not on GCP)
-
-Notes:
-  - Firestore document size limit is ~1 MiB. This script skips files larger than --max-size-mb
-    unless you override the threshold.
 """
 
 import argparse
@@ -31,7 +28,7 @@ import sys
 from typing import Iterable, Tuple
 
 
-# Allow running this file directly (e.g., `python app/scripts/backfill_firestore.py`)
+# Allow running this file directly (e.g., `python app/scripts/backfill_spanner.py`)
 if __package__ is None or __package__ == "":
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -62,7 +59,7 @@ def _extract_src_date(filename: str) -> Tuple[str, bool]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Backfill Firestore from local sources directory")
+    parser = argparse.ArgumentParser(description="Backfill Spanner from local sources directory")
     parser.add_argument(
         "--dir",
         default=settings.SOURCES_DIR,
@@ -76,12 +73,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Overwrite Firestore doc even if it exists",
+        help="Overwrite Spanner rows for the date even if they exist",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="List actions without writing to Firestore",
+        help="List actions without writing to Spanner",
     )
     parser.add_argument(
         "--limit",
@@ -92,8 +89,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--max-size-mb",
         type=float,
-        default=0.95,
-        help="Skip files larger than this size in MB (default: 0.95)",
+        default=5.0,
+        help="Skip files larger than this size in MB (default: 5.0)",
     )
     parser.add_argument(
         "--log-level",
@@ -109,25 +106,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     logger = logging.getLogger("backfill")
 
-    # Validate Firestore configuration early unless dry-run
+    # Validate Spanner configuration early unless dry-run
     if not args.dry_run:
-        if not settings.FIRESTORE_ENABLED:
-            logger.error("FIRESTORE_ENABLED is false. Enable it in .env or environment.")
+        if not settings.SPANNER_ENABLED:
+            logger.error("SPANNER_ENABLED is false. Enable it in .env or environment.")
             return 2
         try:
-            from app.repositories import firestore_repo  # type: ignore
+            from app.repositories import spanner_repo  # type: ignore
             # Probe client initialization early to fail fast on config errors
             try:
-                # Access a harmless call to trigger client creation lazily
-                firestore_repo._ensure_client()  # type: ignore[attr-defined]
+                spanner_repo._ensure_database()  # type: ignore[attr-defined]
             except Exception as exc:  # pragma: no cover - environment dependent
-                logger.error("Failed to initialize Firestore client: %s", exc)
+                logger.error("Failed to initialize Spanner client: %s", exc)
                 return 2
         except Exception as exc:  # pragma: no cover - optional dep import
-            logger.error("Failed to import Firestore repo or dependency: %s", exc)
+            logger.error("Failed to import Spanner repo or dependency: %s", exc)
             return 2
     else:
-        firestore_repo = None  # type: ignore
+        spanner_repo = None  # type: ignore
 
     directory = args.dir
     pattern = args.pattern
@@ -171,9 +167,8 @@ def main(argv: list[str] | None = None) -> int:
             skipped_large += 1
             continue
 
-        # Show what would happen
         logger.info(
-            "%s -> doc=%s size=%.3f MB%s",
+            "%s -> row=%s size=%.3f MB%s",
             os.path.basename(path),
             target_date,
             size_mb,
@@ -183,26 +178,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             continue
 
-        # Import here to avoid import when dry-run
-        from app.repositories import firestore_repo  # type: ignore
+        from app.repositories import spanner_repo  # type: ignore
 
-        # If not overwriting, check existence
         if not args.overwrite:
             try:
-                exists = firestore_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                exists = spanner_repo.get_csv(target_date)  # type: ignore[attr-defined]
             except Exception:
                 exists = None
             if exists is not None:
                 skipped_exists += 1
-                logger.info("Skip (exists): doc=%s", target_date)
+                logger.info("Skip (exists): row=%s", target_date)
                 continue
 
-        # Upload
         try:
             with open(path, "rb") as f:
                 content = f.read()
             filename = os.path.basename(path)
-            firestore_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+            spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
             uploaded += 1
         except Exception as exc:
             logger.error("Upload failed for %s: %s", os.path.basename(path), exc)
@@ -215,7 +207,6 @@ def main(argv: list[str] | None = None) -> int:
         skipped_badname,
         skipped_large,
     )
-    # Non-zero exit code if nothing uploaded and not dry-run
     if not args.dry_run and uploaded == 0:
         return 3
     return 0

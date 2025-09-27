@@ -16,9 +16,9 @@ from app.api.v1.routes.admin import router as admin_router
 from app.core.config import settings
 from app.crawler.downloader import download_if_changed
 try:
-    from app.repositories import firestore_repo  # type: ignore
+    from app.repositories import spanner_repo  # type: ignore
 except Exception:
-    firestore_repo = None  # type: ignore
+    spanner_repo = None  # type: ignore
 
 
 def create_app() -> FastAPI:
@@ -50,24 +50,33 @@ def create_app() -> FastAPI:
 
         def _run():
             try:
-                # Firestore config summary (safe)
+                # Spanner config summary (safe)
                 import os as _os
                 from datetime import datetime as _dt
                 from app.utils.bizdate import next_business_day
                 logger.info(
-                    "Firestore config: enabled=%s project=%s collection=%s creds=%s",
-                    getattr(settings, "FIRESTORE_ENABLED", False),
+                    "Spanner config: enabled=%s project=%s instance=%s database=%s items_table=%s metadata_table=%s creds=%s",
+                    getattr(settings, "SPANNER_ENABLED", False),
                     getattr(settings, "GCP_PROJECT", "<auto>"),
-                    getattr(settings, "FIRESTORE_COLLECTION", "auction_data"),
+                    getattr(settings, "SPANNER_INSTANCE", "<unset>"),
+                    getattr(settings, "SPANNER_DATABASE", "<unset>"),
+                    getattr(settings, "SPANNER_ITEMS_TABLE", "auction_items"),
+                    getattr(settings, "SPANNER_METADATA_TABLE", "auction_batches"),
                     _os.path.basename(_os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "<env-not-set>"),
                 )
                 # Decide source date for crawler (YYMMDD)
                 src_date = _dt.now().strftime("%y%m%d")
 
-                logger.info("Startup crawl (pre-checked Firestore): %s", url)
+                logger.info("Startup crawl (pre-checked Spanner): %s", url)
                 result = download_if_changed(url, return_bytes_on_no_change=True)
-                logger.info("Startup crawl result: %s", result)
-                if settings.FIRESTORE_ENABLED and firestore_repo is not None and (result.get("path") or result.get("content")):
+                logger.info(
+                    "Startup crawl result: changed=%s status=%s filename=%s path=%s",
+                    result.get("changed"),
+                    result.get("status"),
+                    result.get("filename"),
+                    result.get("path"),
+                )
+                if settings.SPANNER_ENABLED and spanner_repo is not None and (result.get("path") or result.get("content")):
                     import os
                     content = None
                     filename = None
@@ -94,11 +103,11 @@ def create_app() -> FastAPI:
                     if content and filename:
                         # If doc is missing, upload regardless of changed
                         try:
-                            exists = firestore_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                            exists = spanner_repo.get_csv(target_date)  # type: ignore[attr-defined]
                         except Exception:
                             exists = None
                         if exists is None or should_upload:
-                            firestore_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                            spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.error("Startup crawl failed: %s", exc)
 
