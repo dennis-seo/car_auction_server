@@ -32,6 +32,28 @@ def list_available_dates() -> list[str]:
     return result
 
 
+def list_available_dates_paginated(page: int, size: int) -> dict[str, object]:
+    if page < 1:
+        raise ValueError("page must be >= 1")
+    if size < 1:
+        raise ValueError("size must be >= 1")
+
+    dates = list_available_dates()
+    total = len(dates)
+    start = (page - 1) * size
+    end = start + size
+    items = dates[start:end]
+    return {
+        "items": items,
+        "page": page,
+        "size": size,
+        "total": total,
+        "total_pages": (total + size - 1) // size if size else 0,
+        "has_next": end < total,
+        "has_prev": start > 0,
+    }
+
+
 def get_csv_path_for_date(date: str) -> Tuple[Optional[str], str]:
     filename = f"auction_data_{date}.csv"
     # When Spanner is enabled, we return (None, filename) to indicate remote fetch
