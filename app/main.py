@@ -16,9 +16,9 @@ from app.api.v1.routes.admin import router as admin_router
 from app.core.config import settings
 from app.crawler.downloader import download_if_changed
 try:
-    from app.repositories import spanner_repo  # type: ignore
+    from app.repositories import supabase_repo  # type: ignore
 except Exception:
-    spanner_repo = None  # type: ignore
+    supabase_repo = None  # type: ignore
 
 
 
@@ -51,29 +51,23 @@ def create_app() -> FastAPI:
 
         def _run():
             try:
-                # Spanner config summary (safe)
-                import os as _os
+                # Supabase config summary (safe)
                 from datetime import datetime as _dt
                 from app.utils.bizdate import next_business_day
                 logger.info(
-                    "Spanner config: enabled=%s project=%s instance=%s database=%s table=%s creds=%s emulator=%s",
-                    getattr(settings, "SPANNER_ENABLED", False),
-                    getattr(settings, "SPANNER_PROJECT", None)
-                    or getattr(settings, "GCP_PROJECT", "<auto>"),
-                    getattr(settings, "SPANNER_INSTANCE", "<unset>"),
-                    getattr(settings, "SPANNER_DATABASE", "<unset>"),
-                    getattr(settings, "SPANNER_TABLE", "<unset>"),
-                    _os.path.basename(_os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "<env-not-set>"),
-                    getattr(settings, "SPANNER_EMULATOR_HOST", ""),
+                    "Supabase config: enabled=%s url=%s table=%s history_table=%s",
+                    getattr(settings, "SUPABASE_ENABLED", False),
+                    getattr(settings, "SUPABASE_URL", "") or "<unset>",
+                    getattr(settings, "SUPABASE_TABLE", "<unset>"),
+                    getattr(settings, "SUPABASE_HISTORY_TABLE", "") or "<none>",
                 )
                 # Decide source date for crawler (YYMMDD)
                 src_date = _dt.now().strftime("%y%m%d")
 
-                logger.info("Startup crawl (pre-checked Spanner): %s", url)
+                logger.info("Startup crawl (pre-checked Supabase): %s", url)
                 result = download_if_changed(url, return_bytes_on_no_change=True)
                 logger.info("Startup crawl result: %s", result)
-                if settings.SPANNER_ENABLED and spanner_repo is not None and (result.get("path") or result.get("content")):
-                    import os
+                if settings.SUPABASE_ENABLED and supabase_repo is not None and (result.get("path") or result.get("content")):
                     content = None
                     filename = None
                     if result.get("path"):
@@ -99,11 +93,11 @@ def create_app() -> FastAPI:
                     if content and filename:
                         # If row is missing, upload regardless of changed
                         try:
-                            exists = spanner_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                            exists = supabase_repo.get_csv(target_date)  # type: ignore[attr-defined]
                         except Exception:
                             exists = None
                         if exists is None or should_upload:
-                            spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                            supabase_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.error("Startup crawl failed: %s", exc)
 

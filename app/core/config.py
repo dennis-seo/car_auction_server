@@ -19,22 +19,16 @@ class Settings(BaseSettings):
     # Admin token for protected endpoints (set via .env or secrets)
     ADMIN_TOKEN: str = ""
 
-    # Shared Google Cloud hints
-    GCP_PROJECT: str = ""
-    GCP_PROJECT_ID: str = ""
+    # Supabase integration
+    SUPABASE_ENABLED: bool = False
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_TABLE: str = "auction_data"
+    SUPABASE_HISTORY_TABLE: str = ""
 
-    # Cloud Spanner integration
-    SPANNER_ENABLED: bool = False
-    SPANNER_PROJECT: str = ""
-    SPANNER_INSTANCE: str = ""
-    SPANNER_DATABASE: str = ""
-    SPANNER_TABLE: str = "auction_data"
-    SPANNER_EMULATOR_HOST: str = ""
-
-    # Standard Google ADC via env var `GOOGLE_APPLICATION_CREDENTIALS` is used if present
+    # Optional Google credentials (used by Firestore migration scripts)
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
-    # Alternative credential input: path, raw JSON, or base64 JSON
-    GCP_SA_KEY: str = ""
 
     # pydantic-settings v2 style config
     model_config = SettingsConfigDict(

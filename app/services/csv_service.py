@@ -6,15 +6,19 @@ from app.utils.bizdate import next_business_day, previous_source_candidates_for_
 
 try:
     # Optional import; only used when enabled
-    from app.repositories import spanner_repo  # type: ignore
+    from app.repositories import supabase_repo  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
-    spanner_repo = None  # type: ignore
+    supabase_repo = None  # type: ignore
+
+
+def _supabase_enabled() -> bool:
+    return settings.SUPABASE_ENABLED and supabase_repo is not None
 
 
 def list_available_dates() -> list[str]:
-    if settings.SPANNER_ENABLED and spanner_repo is not None:
+    if _supabase_enabled():
         try:
-            return spanner_repo.list_dates()  # type: ignore[attr-defined]
+            return supabase_repo.list_dates()  # type: ignore[attr-defined]
         except Exception:
             # Fallback to local listing on failure
             pass
@@ -35,8 +39,8 @@ def list_available_dates() -> list[str]:
 
 def get_csv_path_for_date(date: str) -> Tuple[Optional[str], str]:
     filename = f"auction_data_{date}.csv"
-    # When Spanner is enabled, we return (None, filename) to indicate remote fetch
-    if settings.SPANNER_ENABLED and spanner_repo is not None:
+    # When Supabase is enabled, we return (None, filename) to indicate remote fetch
+    if _supabase_enabled():
         return None, filename
     # Local mode: requested date is mapped business date. Find source file by candidates.
     for src in previous_source_candidates_for_mapped(date):
@@ -50,11 +54,11 @@ def get_csv_path_for_date(date: str) -> Tuple[Optional[str], str]:
 
 
 def get_csv_content_for_date(date: str) -> Tuple[Optional[bytes], str]:
-    """Fetch CSV content bytes (Spanner) or None with filename for context."""
+    """Fetch CSV content bytes (Supabase) or None with filename for context."""
     filename = f"auction_data_{date}.csv"
-    if settings.SPANNER_ENABLED and spanner_repo is not None:
+    if _supabase_enabled():
         try:
-            res = spanner_repo.get_csv(date)  # type: ignore[attr-defined]
+            res = supabase_repo.get_csv(date)  # type: ignore[attr-defined]
             if res is None:
                 return None, filename
             content, fname = res

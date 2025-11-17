@@ -12,8 +12,8 @@ router = APIRouter()
 @router.get("/files/{date}")
 def get_csv(date: str):
     try:
-        # Spanner mode: fetch bytes and return direct response
-        if settings.SPANNER_ENABLED:
+        # Supabase mode: fetch bytes and return direct response
+        if settings.SUPABASE_ENABLED:
             content, filename = get_csv_content_for_date(date)
             if content is None:
                 raise HTTPException(status_code=404, detail="CSV not found")
