@@ -50,7 +50,7 @@ POST {{cloudBase}}/api/admin/crawl?force=true
 Authorization: Bearer {{token}}
 
 ###
-# Admin: ensure a specific source date exists in Spanner (uploads under next business day) — local
+# Admin: ensure a specific source date exists in Firestore (uploads under next business day) — local
 # Example: ensure source 250908 => stores under 250909
 POST {{localBase}}/api/admin/ensure/250908
 Authorization: Bearer {{token}}

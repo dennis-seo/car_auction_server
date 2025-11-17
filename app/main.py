@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import logging
 import threading
@@ -16,24 +16,14 @@ from app.api.v1.routes.admin import router as admin_router
 from app.core.config import settings
 from app.crawler.downloader import download_if_changed
 try:
-    from app.repositories import spanner_repo  # type: ignore
+    from app.repositories import supabase_repo  # type: ignore
 except Exception:
-    spanner_repo = None  # type: ignore
+    supabase_repo = None  # type: ignore
 
-try:
-    from app.repositories import firestore_repo  # type: ignore
-except Exception:
-    firestore_repo = None  # type: ignore
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(
-        title="Car Auction API",
-        version="1.0.0",
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
-        openapi_url="/api/openapi.json",
-    )
+    app = FastAPI(title="Car Auction API", version="1.0.0")
 
     # CORS: mirror behavior from the simple server
     app.add_middleware(
@@ -61,82 +51,53 @@ def create_app() -> FastAPI:
 
         def _run():
             try:
-                # Spanner config summary (safe)
-                import os as _os
+                # Supabase config summary (safe)
                 from datetime import datetime as _dt
                 from app.utils.bizdate import next_business_day
                 logger.info(
-                    "Backend config: spanner_enabled=%s firestore_enabled=%s project=%s creds=%s",
-                    getattr(settings, "SPANNER_ENABLED", False),
-                    getattr(settings, "FIRESTORE_ENABLED", False),
-                    getattr(settings, "GCP_PROJECT", "<auto>"),
-                    _os.path.basename(_os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "<env-not-set>"),
+                    "Supabase config: enabled=%s url=%s table=%s history_table=%s",
+                    getattr(settings, "SUPABASE_ENABLED", False),
+                    getattr(settings, "SUPABASE_URL", "") or "<unset>",
+                    getattr(settings, "SUPABASE_TABLE", "<unset>"),
+                    getattr(settings, "SUPABASE_HISTORY_TABLE", "") or "<none>",
                 )
                 # Decide source date for crawler (YYMMDD)
                 src_date = _dt.now().strftime("%y%m%d")
 
-                logger.info("Startup crawl (pre-checked Spanner): %s", url)
+                logger.info("Startup crawl (pre-checked Supabase): %s", url)
                 result = download_if_changed(url, return_bytes_on_no_change=True)
-                logger.info(
-                    "Startup crawl result: changed=%s status=%s filename=%s path=%s",
-                    result.get("changed"),
-                    result.get("status"),
-                    result.get("filename"),
-                    result.get("path"),
-                )
-                if result.get("path") or result.get("content"):
-                    import os
-
+                logger.info("Startup crawl result: %s", result)
+                if settings.SUPABASE_ENABLED and supabase_repo is not None and (result.get("path") or result.get("content")):
                     content = None
                     filename = None
                     if result.get("path"):
                         path = result["path"]
                         filename = os.path.basename(path)
-                        try:
-                            with open(path, "rb") as f:
-                                content = f.read()
-                        except Exception as exc:
-                            logger.error("Failed to read downloaded file %s: %s", path, exc)
-                            content = result.get("content")
+                        with open(path, "rb") as f:
+                            content = f.read()
                     else:
                         content = result.get("content")
                         filename = result.get("filename") or f"auction_data_{src_date}.csv"
-
+                    # Try to parse src_date from filename if possible
                     if filename and filename.startswith("auction_data_") and filename.endswith(".csv"):
                         try:
                             src_date = filename[len("auction_data_") : -len(".csv")]
                         except Exception:
                             pass
-
+                    # Map to target business date and upload when changed or missing
                     try:
                         target_date = next_business_day(src_date)
                     except Exception:
                         target_date = src_date
-
+                    should_upload = bool(result.get("changed"))
                     if content and filename:
-                        should_upload = bool(result.get("changed"))
-
-                        if settings.SPANNER_ENABLED and spanner_repo is not None:
-                            try:
-                                try:
-                                    exists = spanner_repo.get_csv(target_date)  # type: ignore[attr-defined]
-                                except Exception:
-                                    exists = None
-                                if exists is None or should_upload:
-                                    spanner_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
-                            except Exception as exc:
-                                logger.error("Spanner upload failed: %s", exc)
-
-                        if settings.FIRESTORE_ENABLED and firestore_repo is not None:
-                            try:
-                                try:
-                                    exists_fs = firestore_repo.get_csv(target_date)  # type: ignore[attr-defined]
-                                except Exception:
-                                    exists_fs = None
-                                if exists_fs is None or should_upload:
-                                    firestore_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
-                            except Exception as exc:
-                                logger.error("Firestore upload failed: %s", exc)
+                        # If row is missing, upload regardless of changed
+                        try:
+                            exists = supabase_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                        except Exception:
+                            exists = None
+                        if exists is None or should_upload:
+                            supabase_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.error("Startup crawl failed: %s", exc)
 

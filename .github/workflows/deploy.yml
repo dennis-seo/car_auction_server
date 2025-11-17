@@ -49,8 +49,4 @@ jobs:
           COMMIT_SHA=${{ github.sha }}
           ADMIN_TOKEN=${{ secrets.ADMIN_TOKEN }}
           CRAWL_URL=${{ secrets.CRAWL_URL && secrets.CRAWL_URL || 'https://www.xn--2q1bm5w1qdbqaq6cwvm.com/wp-content/themes/welcomecar-new/auction_data.csv' }}
-          SPANNER_ENABLED=${{ secrets.SPANNER_ENABLED || 'true' }}
-          SPANNER_INSTANCE=${{ secrets.SPANNER_INSTANCE || 'car-auction-250926' }}
-          SPANNER_DATABASE=${{ secrets.SPANNER_DATABASE || 'car_auction_spanner' }}
-          SPANNER_ITEMS_TABLE=${{ secrets.SPANNER_ITEMS_TABLE || 'auction_items' }}
-          SPANNER_METADATA_TABLE=${{ secrets.SPANNER_METADATA_TABLE || 'auction_batches' }}
+          FIRESTORE_ENABLED=${{ secrets.FIRESTORE_ENABLED }}

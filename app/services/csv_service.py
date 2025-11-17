@@ -1,6 +1,4 @@
-import csv
-import io
-from typing import Any, Dict, Optional, Tuple
+﻿from typing import Optional, Tuple
 
 from app.core.config import settings
 from app.repositories.file_repo import list_auction_csv_files, resolve_csv_filepath
@@ -8,13 +6,22 @@ from app.utils.bizdate import next_business_day, previous_source_candidates_for_
 
 try:
     # Optional import; only used when enabled
-    from app.repositories import spanner_repo  # type: ignore
+    from app.repositories import supabase_repo  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
-    spanner_repo = None  # type: ignore
+    supabase_repo = None  # type: ignore
+
+
+def _supabase_enabled() -> bool:
+    return settings.SUPABASE_ENABLED and supabase_repo is not None
+
 
 def list_available_dates() -> list[str]:
-    if settings.SPANNER_ENABLED and spanner_repo is not None:
-        return spanner_repo.list_dates()  # type: ignore[attr-defined]
+    if _supabase_enabled():
+        try:
+            return supabase_repo.list_dates()  # type: ignore[attr-defined]
+        except Exception:
+            # Fallback to local listing on failure
+            pass
     files = list_auction_csv_files()
     mapped: set[str] = set()
     for name in files:
@@ -30,32 +37,10 @@ def list_available_dates() -> list[str]:
     return result
 
 
-def list_available_dates_paginated(page: int, size: int) -> dict[str, object]:
-    if page < 1:
-        raise ValueError("page must be >= 1")
-    if size < 1:
-        raise ValueError("size must be >= 1")
-
-    dates = list_available_dates()
-    total = len(dates)
-    start = (page - 1) * size
-    end = start + size
-    items = dates[start:end]
-    return {
-        "items": items,
-        "page": page,
-        "size": size,
-        "total": total,
-        "total_pages": (total + size - 1) // size if size else 0,
-        "has_next": end < total,
-        "has_prev": start > 0,
-    }
-
-
 def get_csv_path_for_date(date: str) -> Tuple[Optional[str], str]:
     filename = f"auction_data_{date}.csv"
-    # When Spanner is enabled, we return (None, filename) to indicate remote fetch
-    if settings.SPANNER_ENABLED and spanner_repo is not None:
+    # When Supabase is enabled, we return (None, filename) to indicate remote fetch
+    if _supabase_enabled():
         return None, filename
     # Local mode: requested date is mapped business date. Find source file by candidates.
     for src in previous_source_candidates_for_mapped(date):
@@ -69,11 +54,11 @@ def get_csv_path_for_date(date: str) -> Tuple[Optional[str], str]:
 
 
 def get_csv_content_for_date(date: str) -> Tuple[Optional[bytes], str]:
-    """Fetch CSV content bytes (Spanner) or None with filename for context."""
+    """Fetch CSV content bytes (Supabase) or None with filename for context."""
     filename = f"auction_data_{date}.csv"
-    if settings.SPANNER_ENABLED and spanner_repo is not None:
+    if _supabase_enabled():
         try:
-            res = spanner_repo.get_csv(date)  # type: ignore[attr-defined]
+            res = supabase_repo.get_csv(date)  # type: ignore[attr-defined]
             if res is None:
                 return None, filename
             content, fname = res
@@ -89,67 +74,3 @@ def get_csv_content_for_date(date: str) -> Tuple[Optional[bytes], str]:
             return f.read(), filename
     except Exception:
         return None, filename
-
-
-def get_auction_data_for_date(date: str) -> Optional[Dict[str, Any]]:
-    if settings.SPANNER_ENABLED and spanner_repo is not None:
-        return spanner_repo.get_items(date)  # type: ignore[attr-defined]
-
-    content, filename = get_csv_content_for_date(date)
-    if content is None:
-        return None
-
-    text = content.decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(text))
-    items: list[Dict[str, Any]] = []
-
-    for idx, row in enumerate(reader, start=1):
-        if not row:
-            continue
-        items.append(
-            {
-                "row_order": idx,
-                "sell_number": _safe_int(row.get("sell_number")),
-                "car_number": _safe_str(row.get("car_number")),
-                "post_title": _safe_str(row.get("Post Title")),
-                "title": _safe_str(row.get("title")),
-                "color": _safe_str(row.get("color")),
-                "fuel": _safe_str(row.get("fuel")),
-                "image": _safe_str(row.get("image")),
-                "km": _safe_int(row.get("km")),
-                "price": _safe_int(row.get("price")),
-                "trans": _safe_str(row.get("trans")),
-                "year": _safe_int(row.get("year")),
-                "auction_name": _safe_str(row.get("auction_name")),
-                "vin": _safe_str(row.get("vin")),
-                "score": _safe_str(row.get("score")),
-                "created_at": None,
-            }
-        )
-
-    return {
-        "date": date,
-        "source_filename": filename,
-        "row_count": len(items),
-        "updated_at": None,
-        "items": items,
-    }
-
-
-def _safe_int(value: Optional[str]) -> Optional[int]:
-    if value is None:
-        return None
-    value = value.strip()
-    if not value:
-        return None
-    try:
-        return int(value.replace(",", ""))
-    except ValueError:
-        return None
-
-
-def _safe_str(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    value = value.strip()
-    return value or None
