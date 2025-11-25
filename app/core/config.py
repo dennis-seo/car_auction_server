@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     SUPABASE_TABLE: str = "auction_data"
     SUPABASE_HISTORY_TABLE: str = ""
 
+    # Firestore integration (optional)
+    FIRESTORE_ENABLED: bool = False
+    FIRESTORE_COLLECTION: str = "auction_data"
+
+    # Common GCP settings for Firestore
+    GCP_PROJECT: str = ""
+    GCP_PROJECT_ID: str = ""
+    GCP_SA_KEY: str = ""
+
     # Optional Google credentials (used by Firestore migration scripts)
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
@@ -34,6 +43,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=os.getenv("ENV_FILE", _PROJECT_ROOT_ENV),
         case_sensitive=False,
+        extra="ignore",  # allow unknown env vars so `.env` doesn't break startup
     )
 
 
