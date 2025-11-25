@@ -29,4 +29,4 @@ CREATE INDEX idx_auction_items_sell_number
 ON auction_items(sell_number)
 WHERE sell_number IS NOT NULL;
 
---
+---
