@@ -1,8 +1,11 @@
-﻿from typing import Optional, Tuple
+import csv
+import io
+from typing import List, Optional, Tuple
 
 from app.core.config import settings
 from app.repositories.file_repo import list_auction_csv_files, resolve_csv_filepath
 from app.utils.bizdate import next_business_day, previous_source_candidates_for_mapped
+from app.schemas.auction import AuctionItem, AuctionResponse
 
 try:
     # Optional import; only used when enabled
@@ -66,11 +69,61 @@ def get_csv_content_for_date(date: str) -> Tuple[Optional[bytes], str]:
         except Exception:
             return None, filename
     # Local mode: read file content
-    path = resolve_csv_filepath(filename)
+    path, actual_filename = get_csv_path_for_date(date)
     if not path:
         return None, filename
     try:
         with open(path, "rb") as f:
-            return f.read(), filename
+            return f.read(), actual_filename
     except Exception:
         return None, filename
+
+
+def _parse_csv_to_items(content: bytes) -> List[AuctionItem]:
+    """CSV 바이트를 AuctionItem 리스트로 파싱"""
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("cp949", errors="replace")
+
+    reader = csv.DictReader(io.StringIO(text))
+    items: List[AuctionItem] = []
+
+    for row in reader:
+        if not isinstance(row, dict):
+            continue
+        item = AuctionItem(
+            post_title=row.get("Post Title", ""),
+            sell_number=row.get("sell_number", ""),
+            car_number=row.get("car_number", ""),
+            color=row.get("color", ""),
+            fuel=row.get("fuel", ""),
+            image=row.get("image", ""),
+            km=row.get("km", ""),
+            price=row.get("price", ""),
+            title=row.get("title", ""),
+            trans=row.get("trans", ""),
+            year=row.get("year", ""),
+            auction_name=row.get("auction_name", ""),
+            vin=row.get("vin", ""),
+            score=row.get("score", ""),
+        )
+        items.append(item)
+
+    return items
+
+
+def get_auction_data_for_date(date: str) -> Optional[AuctionResponse]:
+    """날짜별 경매 데이터를 JSON 형식으로 반환"""
+    content, filename = get_csv_content_for_date(date)
+    if content is None:
+        return None
+
+    items = _parse_csv_to_items(content)
+
+    return AuctionResponse(
+        date=date,
+        source_filename=filename,
+        row_count=len(items),
+        items=items,
+    )
