@@ -7,6 +7,7 @@ from app.repositories.file_repo import list_auction_csv_files, resolve_csv_filep
 from app.utils.bizdate import next_business_day, previous_source_candidates_for_mapped
 from app.schemas.auction import AuctionItem, AuctionResponse
 from app.utils.model_matcher import match_car_model
+from app.utils.encoding import decode_csv_bytes
 
 try:
     # Optional import; only used when enabled
@@ -23,13 +24,6 @@ def _supabase_enabled() -> bool:
 
 def _auction_records_enabled() -> bool:
     return settings.SUPABASE_ENABLED and auction_records_repo is not None
-
-
-def _convert_date_to_yymmdd(date: str) -> str:
-    """YYYY-MM-DD -> YYMMDD 변환"""
-    if len(date) == 10 and date[4] == "-" and date[7] == "-":
-        return date[2:4] + date[5:7] + date[8:10]
-    return date
 
 
 def list_available_dates() -> list[str]:
@@ -101,11 +95,7 @@ def get_csv_content_for_date(date: str) -> Tuple[Optional[bytes], str]:
 
 def _parse_csv_to_items(content: bytes) -> List[AuctionItem]:
     """CSV 바이트를 AuctionItem 리스트로 파싱"""
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = content.decode("cp949", errors="replace")
-
+    text = decode_csv_bytes(content)
     reader = csv.DictReader(io.StringIO(text))
     items: List[AuctionItem] = []
 

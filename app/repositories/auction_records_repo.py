@@ -11,11 +11,17 @@ import csv
 import io
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-import requests
-
-from app.core.config import settings
+from app.repositories.supabase_common import (
+    require_enabled,
+    base_url,
+    session,
+    rest_headers,
+    chunk,
+)
+from app.utils.bizdate import yymmdd_to_iso
+from app.utils.encoding import decode_csv_bytes
 from app.utils.title_parser import (
     parse_title,
     normalize_fuel,
@@ -27,62 +33,7 @@ from app.utils.title_parser import (
 
 logger = logging.getLogger("auction_records")
 
-_SESSION: Optional[requests.Session] = None
 _TABLE_NAME = "auction_records"
-
-
-def _require_enabled() -> None:
-    """Supabase가 활성화되어 있는지 확인"""
-    if not settings.SUPABASE_ENABLED:
-        raise RuntimeError("Supabase integration is disabled")
-
-
-def _base_url() -> str:
-    url = (settings.SUPABASE_URL or "").strip().rstrip("/")
-    if not url:
-        raise RuntimeError("SUPABASE_URL must be configured")
-    return url
-
-
-def _service_key() -> str:
-    key = (settings.SUPABASE_SERVICE_ROLE_KEY or "").strip()
-    if not key:
-        raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY must be configured for write operations")
-    return key
-
-
-def _read_key() -> str:
-    key = (settings.SUPABASE_SERVICE_ROLE_KEY or settings.SUPABASE_ANON_KEY or "").strip()
-    if not key:
-        raise RuntimeError("Supabase API key is not configured")
-    return key
-
-
-def _session() -> requests.Session:
-    global _SESSION
-    if _SESSION is None:
-        _SESSION = requests.Session()
-    return _SESSION
-
-
-def _rest_headers(use_service: bool = False, extra: Optional[Dict[str, str]] = None, json_body: bool = False) -> Dict[str, str]:
-    key = _service_key() if use_service else _read_key()
-    headers: Dict[str, str] = {
-        "apikey": key,
-        "Authorization": f"Bearer {key}",
-        "Accept": "application/json",
-    }
-    if json_body:
-        headers["Content-Type"] = "application/json"
-    if extra:
-        headers.update(extra)
-    return headers
-
-
-def _chunk(iterable: List[Dict[str, object]], size: int) -> Iterable[List[Dict[str, object]]]:
-    """리스트를 청크로 분할"""
-    for i in range(0, len(iterable), size):
-        yield iterable[i : i + size]
 
 
 def _safe_int(value: str) -> Optional[int]:
@@ -133,10 +84,7 @@ def _parse_csv_row(row: Dict[str, str], date: str, filename: str) -> Dict[str, o
     usage_type = normalize_usage_type(raw_fuel)
 
     # 날짜 변환 (YYMMDD -> YYYY-MM-DD)
-    try:
-        auction_date = f"20{date[:2]}-{date[2:4]}-{date[4:6]}"
-    except (IndexError, ValueError):
-        auction_date = date
+    auction_date = yymmdd_to_iso(date)
 
     record: Dict[str, object] = {
         # 식별 정보
@@ -188,19 +136,23 @@ def _parse_csv_row(row: Dict[str, str], date: str, filename: str) -> Dict[str, o
 
 
 def _parse_csv_content(date: str, filename: str, content: bytes) -> List[Dict[str, object]]:
-    """CSV 바이트 내용을 파싱하여 레코드 리스트 반환"""
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = content.decode("cp949", errors="replace")
-
+    """CSV 바이트 내용을 파싱하여 레코드 리스트 반환 (중복 제거)"""
+    text = decode_csv_bytes(content)
     reader = csv.DictReader(io.StringIO(text))
     rows: List[Dict[str, object]] = []
+    seen_keys: set[tuple[object, ...]] = set()
 
     for raw_row in reader:
         if not isinstance(raw_row, dict):
             continue
         record = _parse_csv_row(raw_row, date, filename)
+
+        # unique constraint: (auction_date, sell_number, auction_house)
+        key = (record.get("auction_date"), record.get("sell_number"), record.get("auction_house"))
+        if key in seen_keys:
+            continue  # 중복 스킵
+        seen_keys.add(key)
+
         rows.append(record)
 
     return rows
@@ -208,18 +160,15 @@ def _parse_csv_content(date: str, filename: str, content: bytes) -> List[Dict[st
 
 def _delete_by_date(date: str) -> None:
     """특정 날짜의 레코드 삭제"""
-    session = _session()
+    sess = session()
     # YYMMDD -> YYYY-MM-DD 변환
-    try:
-        auction_date = f"20{date[:2]}-{date[2:4]}-{date[4:6]}"
-    except (IndexError, ValueError):
-        auction_date = date
+    auction_date = yymmdd_to_iso(date)
 
-    url = f"{_base_url()}/rest/v1/{_TABLE_NAME}"
+    url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
     params = {"auction_date": f"eq.{auction_date}"}
-    headers = _rest_headers(use_service=True, extra={"Prefer": "count=exact"})
+    headers = rest_headers(use_service=True, extra={"Prefer": "count=exact"})
 
-    resp = session.delete(url, headers=headers, params=params, timeout=30)
+    resp = sess.delete(url, headers=headers, params=params, timeout=30)
     if resp.status_code not in (200, 204):
         logger.error("Delete failed (status=%s): %s", resp.status_code, resp.text)
         resp.raise_for_status()
@@ -230,12 +179,12 @@ def _insert_rows(rows: List[Dict[str, object]]) -> None:
     if not rows:
         return
 
-    session = _session()
-    headers = _rest_headers(use_service=True, json_body=True, extra={"Prefer": "resolution=merge-duplicates"})
-    url = f"{_base_url()}/rest/v1/{_TABLE_NAME}"
+    sess = session()
+    headers = rest_headers(use_service=True, json_body=True, extra={"Prefer": "resolution=merge-duplicates"})
+    url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
 
-    for chunk in _chunk(rows, 500):
-        resp = session.post(url, headers=headers, json=chunk, timeout=60)
+    for batch in chunk(rows, 500):
+        resp = sess.post(url, headers=headers, json=batch, timeout=60)
         if resp.status_code not in (200, 201, 204):
             logger.error("Insert failed (status=%s): %s", resp.status_code, resp.text)
             resp.raise_for_status()
@@ -253,7 +202,7 @@ def save_csv(date: str, filename: str, content: bytes) -> int:
     Returns:
         저장된 레코드 수
     """
-    _require_enabled()
+    require_enabled()
 
     if not content:
         raise ValueError("content is empty")
@@ -272,35 +221,45 @@ def save_csv(date: str, filename: str, content: bytes) -> int:
 
 
 def list_dates() -> List[str]:
-    """저장된 모든 날짜 목록 조회 (YYYY-MM-DD 형식)"""
-    _require_enabled()
+    """저장된 모든 날짜 목록 조회 (YYYY-MM-DD 형식, 페이지네이션 적용)"""
+    require_enabled()
 
-    session = _session()
-    url = f"{_base_url()}/rest/v1/{_TABLE_NAME}"
-    params = {
-        "select": "auction_date",
-        "order": "auction_date.desc",
-    }
+    sess = session()
+    url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
 
-    resp = session.get(url, headers=_rest_headers(), params=params, timeout=20)
-    if resp.status_code == 404:
-        return []
-    resp.raise_for_status()
-
-    payload = resp.json()
     seen: set[str] = set()
-    dates: List[str] = []
+    offset = 0
+    page_size = 1000
 
-    if isinstance(payload, list):
+    while True:
+        params = {
+            "select": "auction_date",
+            "order": "auction_date.desc",
+            "limit": str(page_size),
+            "offset": str(offset),
+        }
+
+        resp = sess.get(url, headers=rest_headers(), params=params, timeout=30)
+        if resp.status_code == 404:
+            break
+        resp.raise_for_status()
+
+        payload = resp.json()
+        if not isinstance(payload, list) or not payload:
+            break
+
         for row in payload:
             if not isinstance(row, dict):
                 continue
             value = row.get("auction_date")
-            if isinstance(value, str) and value not in seen:
+            if isinstance(value, str):
                 seen.add(value)
-                dates.append(value)
 
-    return dates
+        if len(payload) < page_size:
+            break
+        offset += page_size
+
+    return sorted(seen, reverse=True)
 
 
 def get_records_by_date(date: str) -> List[Dict[str, object]]:
@@ -313,23 +272,20 @@ def get_records_by_date(date: str) -> List[Dict[str, object]]:
     Returns:
         레코드 리스트
     """
-    _require_enabled()
+    require_enabled()
 
     # YYMMDD -> YYYY-MM-DD 변환
-    if len(date) == 6 and date.isdigit():
-        auction_date = f"20{date[:2]}-{date[2:4]}-{date[4:6]}"
-    else:
-        auction_date = date
+    auction_date = yymmdd_to_iso(date)
 
-    session = _session()
-    url = f"{_base_url()}/rest/v1/{_TABLE_NAME}"
+    sess = session()
+    url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
     params = {
         "select": "*",
         "auction_date": f"eq.{auction_date}",
         "order": "sell_number.asc",
     }
 
-    resp = session.get(url, headers=_rest_headers(), params=params, timeout=60)
+    resp = sess.get(url, headers=rest_headers(), params=params, timeout=60)
     if resp.status_code == 404:
         return []
     resp.raise_for_status()
@@ -420,10 +376,10 @@ def search_vehicles(
     Returns:
         (레코드 리스트, 전체 개수)
     """
-    _require_enabled()
+    require_enabled()
 
-    session = _session()
-    base_url = f"{_base_url()}/rest/v1/{_TABLE_NAME}"
+    sess = session()
+    api_url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
 
     # 필터 파라미터 구성
     params: Dict[str, str] = {}
@@ -454,8 +410,8 @@ def search_vehicles(
 
     # 전체 개수 조회
     count_params = {**params, "select": "count"}
-    count_headers = _rest_headers(extra={"Prefer": "count=exact"})
-    count_resp = session.head(base_url, headers=count_headers, params=count_params, timeout=30)
+    count_headers = rest_headers(extra={"Prefer": "count=exact"})
+    count_resp = sess.head(api_url, headers=count_headers, params=count_params, timeout=30)
 
     total = 0
     if "content-range" in count_resp.headers:
@@ -475,7 +431,7 @@ def search_vehicles(
         "offset": str(offset),
     }
 
-    resp = session.get(base_url, headers=_rest_headers(extra={"Prefer": "count=exact"}), params=data_params, timeout=60)
+    resp = sess.get(api_url, headers=rest_headers(extra={"Prefer": "count=exact"}), params=data_params, timeout=60)
     if resp.status_code == 404:
         return [], 0
     resp.raise_for_status()
@@ -512,10 +468,10 @@ def get_price_history(
     Returns:
         가격 히스토리 레코드 리스트
     """
-    _require_enabled()
+    require_enabled()
 
-    session = _session()
-    url = f"{_base_url()}/rest/v1/{_TABLE_NAME}"
+    sess = session()
+    url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
     params: Dict[str, str] = {
         "select": "auction_date,manufacturer,model,sub_model,year,km,price,score,fuel_type",
         "order": "auction_date.desc",
@@ -529,7 +485,7 @@ def get_price_history(
     if year:
         params["year"] = f"eq.{year}"
 
-    resp = session.get(url, headers=_rest_headers(), params=params, timeout=60)
+    resp = sess.get(url, headers=rest_headers(), params=params, timeout=60)
     if resp.status_code == 404:
         return []
     resp.raise_for_status()
@@ -538,3 +494,33 @@ def get_price_history(
     if isinstance(data, list):
         return [row for row in data if isinstance(row, dict)]
     return []
+
+
+def get_by_id(record_id: int) -> Optional[Dict[str, object]]:
+    """
+    ID로 단일 레코드 조회
+
+    Args:
+        record_id: 레코드 ID
+
+    Returns:
+        레코드 딕셔너리 또는 None
+    """
+    require_enabled()
+
+    sess = session()
+    url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
+    params = {
+        "id": f"eq.{record_id}",
+        "select": "*",
+    }
+
+    resp = sess.get(url, headers=rest_headers(), params=params, timeout=30)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+
+    data = resp.json()
+    if isinstance(data, list) and data:
+        return data[0] if isinstance(data[0], dict) else None
+    return None

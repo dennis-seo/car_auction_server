@@ -296,23 +296,11 @@ def get_vehicle(
     try:
         from app.repositories import auction_records_repo
 
-        items, _ = auction_records_repo.search_vehicles(limit=1, offset=0)
-
-        # ID로 직접 조회
-        import requests
-        session = requests.Session()
-        base_url = f"{auction_records_repo._base_url()}/rest/v1/{auction_records_repo._TABLE_NAME}"
-        headers = auction_records_repo._rest_headers()
-        params = {"id": f"eq.{record_id}", "select": "*"}
-
-        resp = session.get(base_url, headers=headers, params=params, timeout=30)
-        resp.raise_for_status()
-
-        data = resp.json()
-        if not data or not isinstance(data, list) or len(data) == 0:
+        record = auction_records_repo.get_by_id(record_id)
+        if not record:
             raise HTTPException(status_code=404, detail="차량을 찾을 수 없습니다")
 
-        return VehicleRecord(**data[0])
+        return VehicleRecord(**record)
 
     except HTTPException:
         raise

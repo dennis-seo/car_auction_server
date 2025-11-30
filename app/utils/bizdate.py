@@ -49,3 +49,33 @@ def previous_source_candidates_for_mapped(yymmdd_mapped: str) -> list[str]:
         _format_yymmdd(d - timedelta(days=3)),  # Fri
     ]
 
+
+def yymmdd_to_iso(yymmdd: str) -> str:
+    """
+    YYMMDD 형식을 YYYY-MM-DD (ISO) 형식으로 변환
+
+    Args:
+        yymmdd: 6자리 날짜 문자열 (예: "251130")
+
+    Returns:
+        ISO 형식 날짜 문자열 (예: "2025-11-30")
+    """
+    if len(yymmdd) == 6 and yymmdd.isdigit():
+        return f"20{yymmdd[:2]}-{yymmdd[2:4]}-{yymmdd[4:6]}"
+    return yymmdd
+
+
+def iso_to_yymmdd(iso_date: str) -> str:
+    """
+    YYYY-MM-DD (ISO) 형식을 YYMMDD 형식으로 변환
+
+    Args:
+        iso_date: ISO 형식 날짜 문자열 (예: "2025-11-30")
+
+    Returns:
+        6자리 날짜 문자열 (예: "251130")
+    """
+    if len(iso_date) == 10 and iso_date[4] == "-" and iso_date[7] == "-":
+        return iso_date[2:4] + iso_date[5:7] + iso_date[8:10]
+    return iso_date
+
