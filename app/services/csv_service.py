@@ -1,6 +1,6 @@
 import csv
 import io
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from app.core.config import settings
 from app.repositories.file_repo import list_auction_csv_files, resolve_csv_filepath
@@ -11,21 +11,40 @@ from app.utils.model_matcher import match_car_model
 try:
     # Optional import; only used when enabled
     from app.repositories import supabase_repo  # type: ignore
+    from app.repositories import auction_records_repo  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
     supabase_repo = None  # type: ignore
+    auction_records_repo = None  # type: ignore
 
 
 def _supabase_enabled() -> bool:
     return settings.SUPABASE_ENABLED and supabase_repo is not None
 
 
+def _auction_records_enabled() -> bool:
+    return settings.SUPABASE_ENABLED and auction_records_repo is not None
+
+
+def _convert_date_to_yymmdd(date: str) -> str:
+    """YYYY-MM-DD -> YYMMDD 변환"""
+    if len(date) == 10 and date[4] == "-" and date[7] == "-":
+        return date[2:4] + date[5:7] + date[8:10]
+    return date
+
+
 def list_available_dates() -> list[str]:
+    """사용 가능한 날짜 목록 조회 (YYMMDD 형식)
+
+    auction_data 테이블에서 날짜 목록을 조회합니다.
+    """
+    # auction_data 테이블에서 날짜 조회
     if _supabase_enabled():
         try:
             return supabase_repo.list_dates()  # type: ignore[attr-defined]
         except Exception:
-            # Fallback to local listing on failure
             pass
+
+    # Fallback: 로컬 파일
     files = list_auction_csv_files()
     mapped: set[str] = set()
     for name in files:
@@ -127,8 +146,53 @@ def _parse_csv_to_items(content: bytes) -> List[AuctionItem]:
     return items
 
 
+def _record_to_auction_item(record: Dict[str, object]) -> AuctionItem:
+    """auction_records 레코드를 AuctionItem으로 변환"""
+    return AuctionItem(
+        post_title=str(record.get("raw_post_title") or ""),
+        sell_number=str(record.get("sell_number") or ""),
+        car_number=str(record.get("car_number") or ""),
+        color=str(record.get("raw_color") or ""),
+        fuel=str(record.get("raw_fuel") or ""),
+        image=str(record.get("image_url") or ""),
+        km=str(record.get("km") or ""),
+        price=str(record.get("price") or ""),
+        title=str(record.get("raw_title") or ""),
+        trans=str(record.get("raw_trans") or ""),
+        year=str(record.get("year") or ""),
+        auction_name=str(record.get("auction_house") or ""),
+        vin=str(record.get("vin") or ""),
+        score=str(record.get("raw_score") or ""),
+        # 정규화된 ID (auction_records에서 이미 파싱됨)
+        manufacturer_id=record.get("manufacturer_id"),
+        model_id=record.get("model_id"),
+        trim_id=record.get("trim_id"),
+        manufacturer=record.get("manufacturer"),
+        model=record.get("model"),
+        trim=record.get("trim"),
+    )
+
+
 def get_auction_data_for_date(date: str) -> Optional[AuctionResponse]:
     """날짜별 경매 데이터를 JSON 형식으로 반환"""
+    # auction_records에서 조회 (우선)
+    if _auction_records_enabled():
+        try:
+            records = auction_records_repo.get_records_by_date(date)  # type: ignore[attr-defined]
+            if records:
+                items = [_record_to_auction_item(r) for r in records]
+                # source_filename 추출
+                filename = records[0].get("source_filename") or f"auction_data_{date}.csv"
+                return AuctionResponse(
+                    date=date,
+                    source_filename=str(filename),
+                    row_count=len(items),
+                    items=items,
+                )
+        except Exception:
+            pass
+
+    # Fallback: CSV 파싱 방식
     content, filename = get_csv_content_for_date(date)
     if content is None:
         return None

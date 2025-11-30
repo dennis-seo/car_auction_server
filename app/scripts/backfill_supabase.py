@@ -12,6 +12,12 @@ Usage examples:
       python -m app.scripts.backfill_supabase --overwrite
   - Limit number of files processed:
       python -m app.scripts.backfill_supabase --limit 50
+  - Backfill only auction_records table:
+      python -m app.scripts.backfill_supabase --target records --overwrite
+  - Backfill only auction_data table:
+      python -m app.scripts.backfill_supabase --target data --overwrite
+  - Backfill both tables (default):
+      python -m app.scripts.backfill_supabase --target both --overwrite
 
 Prerequisites:
   - SUPABASE_ENABLED=true in environment or .env
@@ -91,6 +97,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level (default: INFO)",
     )
+    parser.add_argument(
+        "--target",
+        default="both",
+        choices=["data", "records", "both"],
+        help="Target table(s): data=auction_data, records=auction_records, both=both tables (default: both)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -99,25 +111,46 @@ def main(argv: list[str] | None = None) -> int:
     )
     logger = logging.getLogger("backfill")
 
+    # Determine which tables to backfill
+    backfill_data = args.target in ("data", "both")
+    backfill_records = args.target in ("records", "both")
+
     # Validate Supabase configuration early unless dry-run
+    supabase_repo = None  # type: ignore
+    auction_records_repo = None  # type: ignore
+
     if not args.dry_run:
         if not settings.SUPABASE_ENABLED:
             logger.error("SUPABASE_ENABLED is false. Enable it in .env or environment.")
             return 2
-        try:
-            from app.repositories import supabase_repo  # type: ignore
 
-            # Probe client initialization early to fail fast on config errors
+        if backfill_data:
             try:
-                supabase_repo.list_dates()  # type: ignore[attr-defined]
-            except Exception as exc:  # pragma: no cover - environment dependent
-                logger.error("Failed to initialize Supabase client: %s", exc)
+                from app.repositories import supabase_repo  # type: ignore
+
+                # Probe client initialization early to fail fast on config errors
+                try:
+                    supabase_repo.list_dates()  # type: ignore[attr-defined]
+                except Exception as exc:  # pragma: no cover - environment dependent
+                    logger.error("Failed to initialize Supabase client: %s", exc)
+                    return 2
+            except Exception as exc:  # pragma: no cover - optional dep import
+                logger.error("Failed to import Supabase repo or dependency: %s", exc)
                 return 2
-        except Exception as exc:  # pragma: no cover - optional dep import
-            logger.error("Failed to import Supabase repo or dependency: %s", exc)
-            return 2
-    else:
-        supabase_repo = None  # type: ignore
+
+        if backfill_records:
+            try:
+                from app.repositories import auction_records_repo  # type: ignore
+
+                # Probe client initialization early to fail fast on config errors
+                try:
+                    auction_records_repo.list_dates()  # type: ignore[attr-defined]
+                except Exception as exc:  # pragma: no cover - environment dependent
+                    logger.error("Failed to initialize auction_records_repo: %s", exc)
+                    return 2
+            except Exception as exc:  # pragma: no cover - optional dep import
+                logger.error("Failed to import auction_records_repo: %s", exc)
+                return 2
 
     directory = args.dir
     pattern = args.pattern
@@ -162,29 +195,62 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             continue
 
-        # Import here to avoid import when dry-run
-        from app.repositories import supabase_repo  # type: ignore
-
-        # If not overwriting, check existence
-        if not args.overwrite:
-            try:
-                exists = supabase_repo.get_csv(target_date)  # type: ignore[attr-defined]
-            except Exception:
-                exists = None
-            if exists is not None:
-                skipped_exists += 1
-                logger.info("Skip (exists): row=%s", target_date)
-                continue
-
-        # Upload
+        # Read file content
         try:
             with open(path, "rb") as f:
                 content = f.read()
             filename = os.path.basename(path)
-            supabase_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
-            uploaded += 1
         except Exception as exc:
-            logger.error("Upload failed for %s: %s", os.path.basename(path), exc)
+            logger.error("Failed to read file %s: %s", os.path.basename(path), exc)
+            continue
+
+        # Upload to auction_data table
+        if backfill_data and supabase_repo is not None:
+            # If not overwriting, check existence
+            if not args.overwrite:
+                try:
+                    exists = supabase_repo.get_csv(target_date)  # type: ignore[attr-defined]
+                except Exception:
+                    exists = None
+                if exists is not None:
+                    logger.info("Skip auction_data (exists): row=%s", target_date)
+                else:
+                    try:
+                        supabase_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                        logger.info("Uploaded to auction_data: %s", target_date)
+                    except Exception as exc:
+                        logger.error("auction_data upload failed for %s: %s", os.path.basename(path), exc)
+            else:
+                try:
+                    supabase_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                    logger.info("Uploaded to auction_data: %s", target_date)
+                except Exception as exc:
+                    logger.error("auction_data upload failed for %s: %s", os.path.basename(path), exc)
+
+        # Upload to auction_records table
+        if backfill_records and auction_records_repo is not None:
+            # If not overwriting, check existence
+            if not args.overwrite:
+                try:
+                    exists = auction_records_repo.get_records_by_date(target_date)  # type: ignore[attr-defined]
+                except Exception:
+                    exists = []
+                if exists:
+                    logger.info("Skip auction_records (exists): row=%s", target_date)
+                else:
+                    try:
+                        count = auction_records_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                        logger.info("Uploaded to auction_records: %s (%d records)", target_date, count)
+                    except Exception as exc:
+                        logger.error("auction_records upload failed for %s: %s", os.path.basename(path), exc)
+            else:
+                try:
+                    count = auction_records_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+                    logger.info("Uploaded to auction_records: %s (%d records)", target_date, count)
+                except Exception as exc:
+                    logger.error("auction_records upload failed for %s: %s", os.path.basename(path), exc)
+
+        uploaded += 1
 
     logger.info(
         "Done. processed=%d, uploaded=%d, skipped_exists=%d, skipped_badname=%d",

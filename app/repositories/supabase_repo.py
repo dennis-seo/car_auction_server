@@ -1,11 +1,19 @@
+"""
+auction_data 테이블 Repository (단순화된 버전)
+
+CSV 파일 원본을 저장하고 조회하는 모듈.
+실제 데이터 조회는 auction_records_repo.py를 사용.
+"""
+
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -14,24 +22,6 @@ from app.core.config import settings
 
 logger = logging.getLogger("supabase")
 _SESSION: Optional[requests.Session] = None
-
-
-CSV_FIELDS: List[Tuple[str, str]] = [
-    ("Post Title", "post_title"),
-    ("sell_number", "sell_number"),
-    ("car_number", "car_number"),
-    ("color", "color"),
-    ("fuel", "fuel"),
-    ("image", "image"),
-    ("km", "km"),
-    ("price", "price"),
-    ("title", "title"),
-    ("trans", "trans"),
-    ("year", "year"),
-    ("auction_name", "auction_name"),
-    ("vin", "vin"),
-    ("score", "score"),
-]
 
 
 def _require_enabled() -> None:
@@ -51,11 +41,6 @@ def _table_name() -> str:
     if not table:
         raise RuntimeError("SUPABASE_TABLE must be configured")
     return table
-
-
-def _history_table_name() -> Optional[str]:
-    table = (settings.SUPABASE_HISTORY_TABLE or "").strip()
-    return table or None
 
 
 def _read_key() -> str:
@@ -93,157 +78,173 @@ def _rest_headers(use_service: bool = False, extra: Optional[Dict[str, str]] = N
     return headers
 
 
-def _delete_existing(date: str) -> None:
-    session = _session()
-    url = f"{_base_url()}/rest/v1/{_table_name()}"
-    params = {"date": f"eq.{date}"}
-    headers = _rest_headers(use_service=True, extra={"Prefer": "count=exact"})
-    resp = session.delete(url, headers=headers, params=params, timeout=30)
-    if resp.status_code not in (200, 204):
-        logger.error("Supabase delete failed (status=%s): %s", resp.status_code, resp.text)
-        resp.raise_for_status()
+def _hash_content(content: bytes) -> str:
+    """SHA256 해시 생성"""
+    return hashlib.sha256(content).hexdigest()
 
 
-def _chunk(iterable: List[Dict[str, object]], size: int) -> Iterable[List[Dict[str, object]]]:
-    for i in range(0, len(iterable), size):
-        yield iterable[i : i + size]
-
-
-def list_dates() -> List[str]:
-    _require_enabled()
-    session = _session()
-    url = f"{_base_url()}/rest/v1/{_table_name()}"
-    # Use pagination to fetch all unique dates (default limit is 1000)
-    all_dates: set[str] = set()
-    offset = 0
-    limit = 1000
-
-    while True:
-        params = {
-            "select": "date",
-            "order": "date.desc",
-            "offset": offset,
-            "limit": limit,
-        }
-        resp = session.get(url, headers=_rest_headers(), params=params, timeout=30)
-        if resp.status_code == 404:
-            break
-        resp.raise_for_status()
-        payload = resp.json()
-        if not isinstance(payload, list) or not payload:
-            break
-
-        for row in payload:
-            if isinstance(row, dict):
-                value = row.get("date")
-                if isinstance(value, str):
-                    all_dates.add(value)
-
-        if len(payload) < limit:
-            break
-        offset += limit
-
-    return sorted(all_dates, reverse=True)
-
-
-def _fetch_rows(date: str) -> List[Dict[str, object]]:
-    session = _session()
-    url = f"{_base_url()}/rest/v1/{_table_name()}"
-    select_cols = ["row_index", "date", "source_filename", "filename"] + [field for _, field in CSV_FIELDS]
-    params = {
-        "select": ",".join(select_cols),
-        "date": f"eq.{date}",
-        "order": "row_index.asc",
-    }
-    resp = session.get(url, headers=_rest_headers(), params=params, timeout=60)
-    if resp.status_code == 404:
-        return []
-    resp.raise_for_status()
-    data = resp.json()
-    if isinstance(data, list):
-        return [row for row in data if isinstance(row, dict)]
-    return []
-
-
-def get_csv(date: str) -> Optional[Tuple[bytes, str]]:
-    _require_enabled()
-    rows = _fetch_rows(date)
-    if not rows:
-        return None
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow([header for header, _ in CSV_FIELDS])
-    for row in rows:
-        writer.writerow([row.get(field, "") or "" for _, field in CSV_FIELDS])
-
-    content = output.getvalue().encode("utf-8")
-    filename = rows[0].get("filename") or rows[0].get("source_filename") or f"auction_data_{date}.csv"
-    return content, str(filename)
-
-
-def _parse_csv_content(date: str, filename: str, content: bytes) -> List[Dict[str, object]]:
+def _count_csv_rows(content: bytes) -> int:
+    """CSV 행 수 계산"""
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
         text = content.decode("cp949", errors="replace")
-    reader = csv.DictReader(io.StringIO(text))
-    rows: List[Dict[str, object]] = []
-    updated_at = datetime.now(timezone.utc).isoformat()
-    base_filename = os.path.basename(filename)
-    for idx, raw_row in enumerate(reader, 1):
-        if not isinstance(raw_row, dict):
-            continue
-        record: Dict[str, object] = {
-            "date": date,
-            "row_index": idx,
-            "source_filename": base_filename,
-            "filename": base_filename,
-            "updated_at": updated_at,
-        }
-        for header, field in CSV_FIELDS:
-            value = raw_row.get(header)
-            if value is None:
-                record[field] = ""
-            else:
-                record[field] = value.strip() if isinstance(value, str) else str(value)
-        rows.append(record)
-    return rows
+
+    reader = csv.reader(io.StringIO(text))
+    # 헤더 제외
+    next(reader, None)
+    return sum(1 for _ in reader)
 
 
-def _insert_rows(table: str, rows: List[Dict[str, object]]) -> None:
-    if not rows:
-        return
+def list_dates() -> List[str]:
+    """저장된 모든 날짜 목록 조회 (YYMMDD 형식)"""
+    _require_enabled()
     session = _session()
-    headers = _rest_headers(use_service=True, json_body=True)
-    url = f"{_base_url()}/rest/v1/{table}"
-    for chunk in _chunk(rows, 500):
-        resp = session.post(url, headers=headers, json=chunk, timeout=60)
-        if resp.status_code not in (200, 201, 204):
-            logger.error("Supabase insert failed (status=%s): %s", resp.status_code, resp.text)
-            resp.raise_for_status()
+    url = f"{_base_url()}/rest/v1/{_table_name()}"
+
+    params = {
+        "select": "date",
+        "order": "date.desc",
+    }
+    resp = session.get(url, headers=_rest_headers(), params=params, timeout=30)
+    if resp.status_code == 404:
+        return []
+    resp.raise_for_status()
+
+    payload = resp.json()
+    dates: List[str] = []
+    if isinstance(payload, list):
+        for row in payload:
+            if isinstance(row, dict):
+                value = row.get("date")
+                if isinstance(value, str):
+                    dates.append(value)
+
+    return dates
+
+
+def get_csv(date: str) -> Optional[Tuple[bytes, str]]:
+    """
+    날짜별 CSV 파일 조회
+
+    Args:
+        date: YYMMDD 형식 날짜
+
+    Returns:
+        (CSV 바이트 내용, 파일명) 또는 None
+    """
+    _require_enabled()
+    session = _session()
+    url = f"{_base_url()}/rest/v1/{_table_name()}"
+
+    params = {
+        "select": "content,filename",
+        "date": f"eq.{date}",
+    }
+    resp = session.get(url, headers=_rest_headers(), params=params, timeout=60)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+
+    data = resp.json()
+    if not isinstance(data, list) or not data:
+        return None
+
+    row = data[0]
+    content = row.get("content")
+    filename = row.get("filename") or f"auction_data_{date}.csv"
+
+    if not content:
+        return None
+
+    # TEXT로 저장된 내용을 bytes로 변환
+    content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+    return content_bytes, filename
 
 
 def save_csv(date: str, filename: str, content: bytes) -> None:
+    """
+    CSV 파일 저장 (upsert)
+
+    Args:
+        date: YYMMDD 형식 날짜
+        filename: 원본 파일명
+        content: CSV 파일 바이트 내용
+    """
     _require_enabled()
     if not content:
         raise ValueError("content is empty")
 
-    rows = _parse_csv_content(date, filename, content)
-    if not rows:
-        logger.warning("CSV parsed with 0 rows date=%s filename=%s (skipping insert)", date, filename)
-        _delete_existing(date)
-        return
+    session = _session()
 
-    _delete_existing(date)
-    _insert_rows(_table_name(), rows)
+    # CSV 내용을 TEXT로 변환
+    try:
+        content_text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        content_text = content.decode("cp949", errors="replace")
 
-    history_table = _history_table_name()
-    if history_table:
-        history_rows = []
-        ingested_at = datetime.now(timezone.utc).isoformat()
-        for row in rows:
-            history_row = dict(row)
-            history_row["history_ingested_at"] = ingested_at
-            history_rows.append(history_row)
-        _insert_rows(history_table, history_rows)
+    # 레코드 생성
+    record = {
+        "date": date,
+        "filename": os.path.basename(filename),
+        "content": content_text,
+        "row_count": _count_csv_rows(content),
+        "file_hash": _hash_content(content),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Upsert (date가 unique key)
+    url = f"{_base_url()}/rest/v1/{_table_name()}"
+    headers = _rest_headers(
+        use_service=True,
+        json_body=True,
+        extra={"Prefer": "resolution=merge-duplicates"}
+    )
+
+    resp = session.post(url, headers=headers, json=record, timeout=60)
+    if resp.status_code not in (200, 201, 204):
+        logger.error("Supabase upsert failed (status=%s): %s", resp.status_code, resp.text)
+        resp.raise_for_status()
+
+    logger.info("Saved CSV to auction_data: date=%s filename=%s rows=%d",
+                date, filename, record["row_count"])
+
+
+def exists(date: str) -> bool:
+    """해당 날짜의 데이터 존재 여부 확인"""
+    _require_enabled()
+    session = _session()
+    url = f"{_base_url()}/rest/v1/{_table_name()}"
+
+    params = {
+        "select": "date",
+        "date": f"eq.{date}",
+    }
+    resp = session.get(url, headers=_rest_headers(), params=params, timeout=30)
+    if resp.status_code == 404:
+        return False
+    resp.raise_for_status()
+
+    data = resp.json()
+    return isinstance(data, list) and len(data) > 0
+
+
+def get_file_hash(date: str) -> Optional[str]:
+    """해당 날짜의 파일 해시 조회 (중복 체크용)"""
+    _require_enabled()
+    session = _session()
+    url = f"{_base_url()}/rest/v1/{_table_name()}"
+
+    params = {
+        "select": "file_hash",
+        "date": f"eq.{date}",
+    }
+    resp = session.get(url, headers=_rest_headers(), params=params, timeout=30)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+
+    data = resp.json()
+    if isinstance(data, list) and data:
+        return data[0].get("file_hash")
+    return None
