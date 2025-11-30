@@ -41,6 +41,9 @@ MANUFACTURER_LABEL_MAP = {
     "KG모빌리티": "KG모빌리티",
     "KG모빌리티(쌍용)": "KG모빌리티",
     "쌍용": "KG모빌리티",
+    "디피코": "디피코",
+    "D'PICO": "디피코",
+    "DPICO": "디피코",
 
     # 수입 - 독일
     "벤츠": "벤츠",
@@ -323,6 +326,10 @@ MODEL_VARIATIONS = {
     "MODELX": "모델X",
     "MODEL X": "모델X",
     "TESLA MODEL X": "모델X",
+
+    # 디피코 (초소형 전기차)
+    "포트로": "포트로",
+    "POTRO": "포트로",
 
     # 렉서스
     "ES300": "ES",
