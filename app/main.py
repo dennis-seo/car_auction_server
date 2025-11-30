@@ -14,6 +14,7 @@ from app.api.v1.routes.dates import router as dates_router
 from app.api.v1.routes.files import router as files_router
 from app.api.v1.routes.admin import router as admin_router
 from app.api.v1.routes.auction import router as auction_router
+from app.api.v1.routes.vehicles import router as vehicles_router
 from app.core.config import settings
 from app.crawler.downloader import download_if_changed
 try:
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(files_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
     app.include_router(auction_router, prefix="/api")
+    app.include_router(vehicles_router, prefix="/api")
 
     # Kick off one crawl attempt on startup (non-blocking)
     # Use uvicorn's error logger so INFO lines show up under uvicorn

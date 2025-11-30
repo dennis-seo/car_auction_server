@@ -13,6 +13,11 @@ try:
 except Exception:
     supabase_repo = None  # type: ignore
 
+try:
+    from app.repositories import auction_records_repo  # type: ignore
+except Exception:
+    auction_records_repo = None  # type: ignore
+
 
 router = APIRouter()
 
@@ -86,6 +91,16 @@ def admin_crawl(
                     supabase_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
                     result["uploaded_to_supabase"] = True
                     result["supabase_row_id"] = target_date
+
+                    # 새 auction_records 테이블에도 저장
+                    if auction_records_repo is not None:
+                        try:
+                            record_count = auction_records_repo.save_csv(target_date, filename, content)
+                            result["uploaded_to_auction_records"] = True
+                            result["auction_records_count"] = record_count
+                        except Exception as ar_err:
+                            result["uploaded_to_auction_records"] = False
+                            result["auction_records_error"] = str(ar_err)
                 else:
                     result["uploaded_to_supabase"] = False
                     result["supabase_row_id"] = target_date
@@ -145,12 +160,25 @@ def admin_ensure_date(
                 with open(path, "rb") as f:
                     content = f.read()
                 supabase_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
-                return {
+
+                result_data = {
                     "date": target_date,
                     "exists_before": False,
                     "uploaded_to_supabase": True,
                     "source": "local",
                 }
+
+                # 새 auction_records 테이블에도 저장
+                if auction_records_repo is not None:
+                    try:
+                        record_count = auction_records_repo.save_csv(target_date, filename, content)
+                        result_data["uploaded_to_auction_records"] = True
+                        result_data["auction_records_count"] = record_count
+                    except Exception as ar_err:
+                        result_data["uploaded_to_auction_records"] = False
+                        result_data["auction_records_error"] = str(ar_err)
+
+                return result_data
             except Exception as fe:
                 # Fall through to downloader attempt with error context
                 last_error = f"local_upload_failed: {fe}"
@@ -190,13 +218,27 @@ def admin_ensure_date(
             )
 
         try:
-            supabase_repo.save_csv(target_date, filename or f"auction_data_{src_date}.csv", content)  # type: ignore[attr-defined]
-            return {
+            final_filename = filename or f"auction_data_{src_date}.csv"
+            supabase_repo.save_csv(target_date, final_filename, content)  # type: ignore[attr-defined]
+
+            result_data = {
                 "date": target_date,
                 "exists_before": False,
                 "uploaded_to_supabase": True,
                 "source": "download",
             }
+
+            # 새 auction_records 테이블에도 저장
+            if auction_records_repo is not None:
+                try:
+                    record_count = auction_records_repo.save_csv(target_date, final_filename, content)
+                    result_data["uploaded_to_auction_records"] = True
+                    result_data["auction_records_count"] = record_count
+                except Exception as ar_err:
+                    result_data["uploaded_to_auction_records"] = False
+                    result_data["auction_records_error"] = str(ar_err)
+
+            return result_data
         except Exception as fe:
             raise HTTPException(status_code=500, detail=f"supabase_upload_failed: {fe}")
     except HTTPException:

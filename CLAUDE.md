@@ -4,7 +4,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FastAPI-based server for car auction data management. Crawls auction CSV data from external sources, stores it locally or in Supabase, and serves it via REST API.
+자동차 경매 데이터를 수집, 저장, 제공하는 FastAPI 기반 백엔드 서버입니다.
+
+### 주요 기능
+- **데이터 수집 (Crawling)**: 외부 경매 사이트에서 CSV 형식의 경매 데이터를 주기적으로 크롤링
+- **데이터 저장**: 로컬 파일 시스템 또는 Supabase(PostgreSQL)에 저장
+- **REST API 제공**: 클라이언트 앱에서 날짜별 경매 데이터를 조회할 수 있는 API 제공
+
+### 기술 스택
+- **Framework**: FastAPI (Python 3.9+)
+- **Database**: Supabase (PostgreSQL) 또는 로컬 파일 시스템
+- **Deployment**: Docker + Google Cloud Run
+- **CI/CD**: GitHub Actions
+
+### 데이터 흐름
+1. **크롤링**: 서버 시작 시 또는 스케줄러에 의해 외부 URL에서 CSV 데이터를 다운로드
+2. **날짜 매핑**: 원본 파일의 날짜(YYMMDD)를 다음 영업일로 변환하여 저장 (예: 금요일 데이터 → 월요일로 저장)
+3. **저장**: 설정에 따라 로컬 `sources/` 디렉토리 또는 Supabase 테이블에 저장
+4. **API 응답**: 클라이언트 요청 시 CSV 파일 또는 JSON 형식으로 데이터 반환
+
+### 프로젝트 구조
+```
+app/
+├── api/v1/routes/     # API 엔드포인트 (dates, files, auction, admin)
+├── core/              # 설정 (config.py)
+├── crawler/           # 크롤링 로직 (downloader.py)
+├── repositories/      # 데이터 저장소 (file_repo, supabase_repo, firestore_repo)
+├── schemas/           # Pydantic 모델 (API 요청/응답 스키마)
+├── services/          # 비즈니스 로직 (csv_service.py)
+├── scripts/           # 마이그레이션/백필 스크립트
+└── utils/             # 유틸리티 (bizdate.py - 영업일 계산)
+```
 
 ## Commands
 
@@ -69,3 +99,10 @@ Controlled by `SUPABASE_ENABLED` env var:
 
 - **deploy.yml**: Pushes to main trigger Docker build and Cloud Run deployment
 - **update-data.yml**: Scheduled crawl trigger (weekdays 10-min intervals during KST evening, weekends every 4 hours)
+
+
+## Git 커밋 메시지 규칙
+- 한국어로 작성, 모든 변경사항 포함
+- **중요**: 커밋 메시지에 Claude 관련 attribution 제외 (아래 내용 포함 금지)
+    - `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+    - `Co-Authored-By: Claude <noreply@anthropic.com>`
