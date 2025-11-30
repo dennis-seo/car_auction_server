@@ -438,18 +438,19 @@ def search_vehicles(
         params["manufacturer"] = f"eq.{manufacturer}"
     if model:
         params["model"] = f"ilike.*{model}*"
-    if year_from and year_to:
-        params["year"] = f"gte.{year_from}&year=lte.{year_to}"
-    elif year_from:
-        params["year"] = f"gte.{year_from}"
-    elif year_to:
-        params["year"] = f"lte.{year_to}"
-    if date_from and date_to:
-        params["auction_date"] = f"gte.{date_from}&auction_date=lte.{date_to}"
-    elif date_from:
-        params["auction_date"] = f"gte.{date_from}"
-    elif date_to:
-        params["auction_date"] = f"lte.{date_to}"
+    # 연식 필터 - and 조건으로 처리
+    and_conditions = []
+    if year_from:
+        and_conditions.append(f"year.gte.{year_from}")
+    if year_to:
+        and_conditions.append(f"year.lte.{year_to}")
+    if date_from:
+        and_conditions.append(f"auction_date.gte.{date_from}")
+    if date_to:
+        and_conditions.append(f"auction_date.lte.{date_to}")
+
+    if and_conditions:
+        params["and"] = f"({','.join(and_conditions)})"
 
     # 전체 개수 조회
     count_params = {**params, "select": "count"}
