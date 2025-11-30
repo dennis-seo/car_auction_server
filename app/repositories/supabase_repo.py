@@ -113,26 +113,37 @@ def list_dates() -> List[str]:
     _require_enabled()
     session = _session()
     url = f"{_base_url()}/rest/v1/{_table_name()}"
-    params = {
-        "select": "date",
-        "order": "date.desc",
-    }
-    resp = session.get(url, headers=_rest_headers(), params=params, timeout=20)
-    if resp.status_code == 404:
-        return []
-    resp.raise_for_status()
-    payload = resp.json()
-    seen: set[str] = set()
-    dates: List[str] = []
-    if isinstance(payload, list):
+    # Use pagination to fetch all unique dates (default limit is 1000)
+    all_dates: set[str] = set()
+    offset = 0
+    limit = 1000
+
+    while True:
+        params = {
+            "select": "date",
+            "order": "date.desc",
+            "offset": offset,
+            "limit": limit,
+        }
+        resp = session.get(url, headers=_rest_headers(), params=params, timeout=30)
+        if resp.status_code == 404:
+            break
+        resp.raise_for_status()
+        payload = resp.json()
+        if not isinstance(payload, list) or not payload:
+            break
+
         for row in payload:
-            if not isinstance(row, dict):
-                continue
-            value = row.get("date")
-            if isinstance(value, str) and value not in seen:
-                seen.add(value)
-                dates.append(value)
-    return dates
+            if isinstance(row, dict):
+                value = row.get("date")
+                if isinstance(value, str):
+                    all_dates.add(value)
+
+        if len(payload) < limit:
+            break
+        offset += limit
+
+    return sorted(all_dates, reverse=True)
 
 
 def _fetch_rows(date: str) -> List[Dict[str, object]]:
