@@ -180,6 +180,16 @@ class AuctionItem(BaseModel):
     vin: str = Field("", description="차대번호", example="KMTGB41CBNU116836")
     score: str = Field("", description="평가 등급", example="A / D")
 
+    # 파싱된 ID 값 (car_models.json 기준)
+    manufacturer_id: Optional[str] = Field(None, description="제조사 ID", example="146")
+    model_id: Optional[str] = Field(None, description="모델 ID", example="1171")
+    trim_id: Optional[str] = Field(None, description="트림 ID", example="2908")
+
+    # 파싱된 정규화 값
+    manufacturer: Optional[str] = Field(None, description="제조사명", example="제네시스")
+    model: Optional[str] = Field(None, description="모델명", example="G80")
+    trim: Optional[str] = Field(None, description="트림명", example="G80 (16년~20년)")
+
     class Config:
         populate_by_name = True
 

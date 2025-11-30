@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.repositories.file_repo import list_auction_csv_files, resolve_csv_filepath
 from app.utils.bizdate import next_business_day, previous_source_candidates_for_mapped
 from app.schemas.auction import AuctionItem, AuctionResponse
+from app.utils.model_matcher import match_car_model
 
 try:
     # Optional import; only used when enabled
@@ -92,8 +93,13 @@ def _parse_csv_to_items(content: bytes) -> List[AuctionItem]:
     for row in reader:
         if not isinstance(row, dict):
             continue
+
+        # Post Title에서 제조사/모델/트림 ID 파싱
+        post_title = row.get("Post Title", "")
+        match_result = match_car_model(post_title) if post_title else None
+
         item = AuctionItem(
-            post_title=row.get("Post Title", ""),
+            post_title=post_title,
             sell_number=row.get("sell_number", ""),
             car_number=row.get("car_number", ""),
             color=row.get("color", ""),
@@ -107,6 +113,14 @@ def _parse_csv_to_items(content: bytes) -> List[AuctionItem]:
             auction_name=row.get("auction_name", ""),
             vin=row.get("vin", ""),
             score=row.get("score", ""),
+            # 파싱된 ID 값
+            manufacturer_id=match_result.manufacturer_id if match_result else None,
+            model_id=match_result.model_id if match_result else None,
+            trim_id=match_result.trim_id if match_result else None,
+            # 파싱된 정규화 값
+            manufacturer=match_result.manufacturer_name if match_result else None,
+            model=match_result.model_name if match_result else None,
+            trim=match_result.trim_name if match_result else None,
         )
         items.append(item)
 
