@@ -78,7 +78,7 @@ MANUFACTURER_LABEL_MAP = {
 
 # 모델명 변형 패턴 (title에서 → JSON model명)
 MODEL_VARIATIONS = {
-    # 현대
+    # 현대 - 한글
     "그랜져": "그랜저",
     "싼타페": "싼타페",
     "산타페": "싼타페",
@@ -93,8 +93,32 @@ MODEL_VARIATIONS = {
     "포터2": "포터",
     "포터II": "포터",
     "마이티": "마이티",
+    # 현대 - 영문
+    "GRANDEUR": "그랜저",
+    "SONATA": "쏘나타",
+    "SANTAFE": "싼타페",
+    "SANTA FE": "싼타페",
+    "TUCSON": "투싼",
+    "AVANTE": "아반떼",
+    "ELANTRA": "아반떼",
+    "PALISADE": "팰리세이드",
+    "KONA": "코나",
+    "VENUE": "베뉴",
+    "NEXO": "넥쏘",
+    "IONIQ": "아이오닉",
+    "IONIQ5": "아이오닉5",
+    "IONIQ6": "아이오닉6",
+    "STARIA": "스타리아",
+    "STAREX": "스타렉스",
+    "PORTER": "포터",
+    "PORTER2": "포터",
+    "CASPER": "캐스퍼",
+    "VELOSTER": "벨로스터",
+    "ACCENT": "엑센트",
+    "i30": "i30",
+    "i40": "i40",
 
-    # 기아
+    # 기아 - 한글
     "쏘렌토": "쏘렌토",
     "소렌토": "쏘렌토",
     "카니발": "카니발",
@@ -113,40 +137,112 @@ MODEL_VARIATIONS = {
     "니로": "니로",
     "레이": "레이",
     "모닝": "모닝",
+    # 기아 - 영문
+    "SORENTO": "쏘렌토",
+    "CARNIVAL": "카니발",
+    "SEDONA": "카니발",
+    "SPORTAGE": "스포티지",
+    "SELTOS": "셀토스",
+    "STONIC": "스토닉",
+    "SOUL": "쏘울",
+    "NIRO": "니로",
+    "RAY": "레이",
+    "MORNING": "모닝",
+    "PICANTO": "모닝",
+    "MOHAVE": "모하비",
+    "BORREGO": "모하비",
+    "STINGER": "스팅어",
+    "OPTIMA": "K5",
+    "CADENZA": "K7",
+    "BONGO": "봉고",
+    "FORTE": "포르테",
+    "PRIDE": "프라이드",
+    "RIO": "프라이드",
 
-    # 제네시스
+    # 제네시스 브랜드 모델 (현대의 구형 '제네시스' 모델과 구분)
     "G70": "G70",
     "G80": "G80",
     "G90": "G90",
     "GV60": "GV60",
     "GV70": "GV70",
     "GV80": "GV80",
+    "GENESIS G70": "G70",
+    "GENESIS G80": "G80",
+    "GENESIS G90": "G90",
+    "GENESIS GV60": "GV60",
+    "GENESIS GV70": "GV70",
+    "GENESIS GV80": "GV80",
 
     # 벤츠 (JSON에는 "E클래스" 형태로 저장됨)
     "E-클래스": "E클래스",
     "E클래스": "E클래스",
+    "E 클래스": "E클래스",
     "C-클래스": "C클래스",
     "C클래스": "C클래스",
+    "C 클래스": "C클래스",
     "S-클래스": "S클래스",
     "S클래스": "S클래스",
+    "S 클래스": "S클래스",
     "A-클래스": "A클래스",
     "A클래스": "A클래스",
+    "A 클래스": "A클래스",
     "GLE-클래스": "GLE",
     "GLE클래스": "GLE",
+    "GLE 클래스": "GLE",
     "GLC-클래스": "GLC",
     "GLC클래스": "GLC",
+    "GLC 클래스": "GLC",
     "GLB-클래스": "GLB",
     "GLB클래스": "GLB",
+    "GLB 클래스": "GLB",
     "GLA-클래스": "GLA",
     "GLA클래스": "GLA",
+    "GLA 클래스": "GLA",
     "CLA-클래스": "CLA",
     "CLA클래스": "CLA",
+    "CLA 클래스": "CLA",
     "CLS-클래스": "CLS",
     "CLS클래스": "CLS",
+    "CLS 클래스": "CLS",
     "G-클래스": "G클래스",
     "G클래스": "G클래스",
+    "G 클래스": "G클래스",
     "GLS-클래스": "GLS",
     "GLS클래스": "GLS",
+    "GLS 클래스": "GLS",
+    # 벤츠 영문 모델명
+    "E300": "E클래스",
+    "E350": "E클래스",
+    "E200": "E클래스",
+    "E220": "E클래스",
+    "E250": "E클래스",
+    "E400": "E클래스",
+    "E450": "E클래스",
+    "E53": "E클래스",
+    "E63": "E클래스",
+    "C200": "C클래스",
+    "C220": "C클래스",
+    "C250": "C클래스",
+    "C300": "C클래스",
+    "C43": "C클래스",
+    "C63": "C클래스",
+    "S350": "S클래스",
+    "S400": "S클래스",
+    "S450": "S클래스",
+    "S500": "S클래스",
+    "S560": "S클래스",
+    "S580": "S클래스",
+    "S63": "S클래스",
+    "S65": "S클래스",
+    "GLE350": "GLE",
+    "GLE450": "GLE",
+    "GLE53": "GLE",
+    "GLE63": "GLE",
+    "GLC200": "GLC",
+    "GLC250": "GLC",
+    "GLC300": "GLC",
+    "GLC43": "GLC",
+    "GLC63": "GLC",
 
     # BMW
     "3시리즈": "3시리즈",
@@ -154,11 +250,34 @@ MODEL_VARIATIONS = {
     "7시리즈": "7시리즈",
     "1시리즈": "1시리즈",
     "4시리즈": "4시리즈",
+    "3 시리즈": "3시리즈",
+    "5 시리즈": "5시리즈",
+    "7 시리즈": "7시리즈",
+    "1 시리즈": "1시리즈",
+    "4 시리즈": "4시리즈",
     "X1": "X1",
     "X3": "X3",
     "X5": "X5",
     "X6": "X6",
     "X7": "X7",
+    # BMW 영문 모델명
+    "320i": "3시리즈",
+    "320d": "3시리즈",
+    "330i": "3시리즈",
+    "330e": "3시리즈",
+    "340i": "3시리즈",
+    "M340i": "3시리즈",
+    "520i": "5시리즈",
+    "520d": "5시리즈",
+    "530i": "5시리즈",
+    "530e": "5시리즈",
+    "540i": "5시리즈",
+    "M550i": "5시리즈",
+    "730i": "7시리즈",
+    "730d": "7시리즈",
+    "740i": "7시리즈",
+    "740d": "7시리즈",
+    "750i": "7시리즈",
 
     # 아우디
     "A3": "A3",
@@ -178,18 +297,32 @@ MODEL_VARIATIONS = {
     "모델 3": "모델3",
     "Model3": "모델3",
     "Model 3": "모델3",
+    "MODEL3": "모델3",
+    "MODEL 3": "모델3",
+    "TESLA MODEL 3": "모델3",
+    "TESLA MODEL3": "모델3",
     "모델Y": "모델Y",
     "모델 Y": "모델Y",
     "ModelY": "모델Y",
     "Model Y": "모델Y",
+    "MODELY": "모델Y",
+    "MODEL Y": "모델Y",
+    "TESLA MODEL Y": "모델Y",
+    "TESLA MODELY": "모델Y",
     "모델S": "모델S",
     "모델 S": "모델S",
     "ModelS": "모델S",
     "Model S": "모델S",
+    "MODELS": "모델S",
+    "MODEL S": "모델S",
+    "TESLA MODEL S": "모델S",
     "모델X": "모델X",
     "모델 X": "모델X",
     "ModelX": "모델X",
     "Model X": "모델X",
+    "MODELX": "모델X",
+    "MODEL X": "모델X",
+    "TESLA MODEL X": "모델X",
 
     # 렉서스
     "ES300": "ES",
@@ -398,6 +531,16 @@ def _get_model_index() -> Dict[str, List[Tuple[Dict, Dict]]]:
 
 def _extract_manufacturer_from_title(title: str) -> Tuple[Optional[str], str]:
     """제목에서 제조사 추출"""
+    # 특수 케이스: 제네시스 브랜드 모델 (G70/G80/G90/GV60/GV70/GV80)
+    # "현대 제네시스 G80" 같은 경우에도 제네시스 브랜드로 인식
+    genesis_models = re.search(r'GENESIS\s+(G70|G80|G90|GV60|GV70|GV80)|제네시스\s+(G70|G80|G90|GV60|GV70|GV80)', title, re.IGNORECASE)
+    if genesis_models:
+        return "제네시스", title
+
+    # 특수 케이스: 테슬라 (TESLA로 시작하거나 포함)
+    if re.search(r'TESLA\s+(MODEL|모델)', title, re.IGNORECASE):
+        return "테슬라", title
+
     # [제조사] 형태
     bracket_match = re.match(r'^\[([^\]]+)\]\s*', title)
     if bracket_match:
@@ -452,8 +595,24 @@ def _find_model_in_text(text: str, manufacturer_label: Optional[str]) -> Optiona
     model_index = _get_model_index()
     normalized = _normalize_model_text(text)
 
-    # 1. 정확한 모델명 매칭 시도
-    for model_name, entries in model_index.items():
+    # 1. 변형 모델명으로 먼저 시도 (긴 키워드 우선 - GENESIS G80, TESLA MODEL Y 등)
+    # 길이 역순으로 정렬하여 긴 패턴이 먼저 매칭되도록
+    sorted_variations = sorted(MODEL_VARIATIONS.items(), key=lambda x: len(x[0]), reverse=True)
+    for variation, canonical in sorted_variations:
+        if variation in text or variation in normalized:
+            if canonical in model_index:
+                entries = model_index[canonical]
+                if manufacturer_label:
+                    for mfr, model in entries:
+                        if mfr.get("label") == manufacturer_label:
+                            return (mfr, model)
+                if entries:
+                    return entries[0]
+
+    # 2. 정확한 모델명 매칭 시도 (model_index의 키)
+    # 길이 역순으로 정렬
+    sorted_models = sorted(model_index.items(), key=lambda x: len(x[0]), reverse=True)
+    for model_name, entries in sorted_models:
         if model_name in normalized or model_name in text:
             # 제조사가 지정된 경우 해당 제조사 모델만
             if manufacturer_label:
@@ -463,18 +622,6 @@ def _find_model_in_text(text: str, manufacturer_label: Optional[str]) -> Optiona
             # 제조사 미지정시 첫 번째 매칭
             if entries:
                 return entries[0]
-
-    # 2. 변형 모델명으로 시도
-    for variation, canonical in MODEL_VARIATIONS.items():
-        if variation in normalized or variation in text:
-            if canonical in model_index:
-                entries = model_index[canonical]
-                if manufacturer_label:
-                    for mfr, model in entries:
-                        if mfr.get("label") == manufacturer_label:
-                            return (mfr, model)
-                if entries:
-                    return entries[0]
 
     # 3. 첫 단어로 시도
     first_word = normalized.split()[0] if normalized.split() else None
@@ -493,7 +640,19 @@ def _find_model_in_text(text: str, manufacturer_label: Optional[str]) -> Optiona
     return None
 
 
-def _find_best_trim(trims: List[Dict], title: str) -> Optional[Dict]:
+def _check_keyword_in_title(title: str, keyword: str) -> bool:
+    """
+    키워드가 제목에 독립된 단어로 존재하는지 확인
+
+    'N'의 경우 'DN8'에서는 False, '쏘나타 N'에서는 True
+    """
+    if keyword == "N":
+        # N은 독립 단어로 있어야 함 (앞뒤로 공백/괄호/문자열끝)
+        return bool(re.search(r'(?<![A-Za-z0-9])N(?![A-Za-z0-9])', title))
+    return keyword in title
+
+
+def _find_best_trim(trims: List[Dict], title: str, fuel_type: Optional[str] = None) -> Optional[Dict]:
     """트림 목록에서 가장 적합한 트림 찾기"""
     if not trims:
         return None
@@ -518,12 +677,31 @@ def _find_best_trim(trims: List[Dict], title: str) -> Optional[Dict]:
             elif abs(int(title_year) - int(trim_start_year)) <= 2:
                 score += 5
 
-        # 키워드 매칭 (하이브리드, N, 일렉트릭 등)
-        keywords = ["하이브리드", "N", "일렉트릭", "플러그인", "PHEV"]
+        # 연료 타입 매칭 (하이브리드, 전기 등)
+        if fuel_type == "하이브리드":
+            if "하이브리드" in trim_name:
+                score += 5
+            else:
+                score -= 3
+        elif fuel_type == "전기":
+            if "일렉트릭" in trim_name or "EV" in trim_name or "전기" in trim_name:
+                score += 5
+            else:
+                score -= 3
+        elif fuel_type == "플러그인하이브리드":
+            if "플러그인" in trim_name or "PHEV" in trim_name:
+                score += 5
+            else:
+                score -= 3
+
+        # 키워드 매칭 (N 라인 등)
+        keywords = ["N"]
         for kw in keywords:
-            if kw in title and kw in trim_name:
+            title_has_kw = _check_keyword_in_title(title, kw)
+            trim_has_kw = kw in trim_name
+            if title_has_kw and trim_has_kw:
                 score += 3
-            elif kw in title and kw not in trim_name:
+            elif title_has_kw and not trim_has_kw:
                 score -= 2
 
         if score > best_score:
@@ -575,9 +753,17 @@ def match_car_model(title: str) -> MatchResult:
         result.model_id = model_info.get("id")
         result.model_name = model_info.get("model")
 
-        # 4. 트림 찾기
+        # 4. 트림 찾기 (fuel_type 힌트 추출)
+        fuel_type = None
+        if "(H)" in title or "(HEV)" in title or "하이브리드" in title:
+            fuel_type = "하이브리드"
+        elif "(PHEV)" in title or "플러그인" in title:
+            fuel_type = "플러그인하이브리드"
+        elif "EV" in title or "일렉트릭" in title or "전기" in title:
+            fuel_type = "전기"
+
         trims = model_info.get("trims", [])
-        best_trim = _find_best_trim(trims, title)
+        best_trim = _find_best_trim(trims, title, fuel_type)
         if best_trim:
             result.trim_id = best_trim.get("id")
             result.trim_name = best_trim.get("trim")
