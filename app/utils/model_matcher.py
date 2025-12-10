@@ -66,6 +66,30 @@ MODEL_VARIATIONS = _load_model_variations()
 # 트림 매칭용 키워드 추출 패턴
 TRIM_YEAR_PATTERN = re.compile(r'\((\d{2})년~([^\)]+)\)')
 
+# 세대코드 패턴 (B8, G70, F3 등)
+GENERATION_CODE_PATTERN = re.compile(r'\b([A-Z]{1,2}\d{1,2})\b')
+
+# 세대 숫자 패턴 (4세대, 5세대 등)
+GENERATION_NUMBER_PATTERN = re.compile(r'(\d)세대')
+
+# 세대코드 → 트림 키워드 매핑 (경매장 세대코드가 트림명과 다를 때)
+GENERATION_TO_TRIM_KEYWORD = {
+    # 현대 쏘나타
+    'DN8': '신형쏘나타',
+    # 현대 그랜저
+    'IG': '그랜저IG',
+    'HG': '그랜저HG',
+    'TG': '그랜저TG',
+    # 현대 아반떼
+    'AD': '아반떼AD',
+    'CN7': '아반떼CN7',
+    'MD': '아반떼MD',
+    'HD': '아반떼HD',
+    'XD': '아반떼XD',
+    # 기아 K5
+    'DL3': '신형K5',
+}
+
 
 @lru_cache(maxsize=1)
 def _load_car_models() -> Dict:
@@ -192,36 +216,75 @@ def _normalize_model_text(text: str) -> str:
     return text.strip()
 
 
+def _is_word_boundary_match(text: str, keyword: str) -> bool:
+    """
+    키워드가 텍스트에서 독립된 단어로 존재하는지 확인
+
+    예: "XM3"에서 "M3"는 False (앞에 X가 붙어있음)
+        "BMW M3"에서 "M3"는 True (독립된 단어)
+    """
+    # 정규식: 앞뒤로 알파벳/숫자가 아닌 문자이거나 문자열 시작/끝
+    pattern = r'(?<![A-Za-z0-9가-힣])' + re.escape(keyword) + r'(?![A-Za-z0-9가-힣])'
+    return bool(re.search(pattern, text))
+
+
 def _find_model_in_text(text: str, manufacturer_label: Optional[str]) -> Optional[Tuple[Dict, Dict]]:
     """텍스트에서 모델 찾기"""
     model_index = _get_model_index()
     normalized = _normalize_model_text(text)
 
-    # 1. 변형 모델명으로 먼저 시도 (긴 키워드 우선 - GENESIS G80, TESLA MODEL Y 등)
-    # 길이 역순으로 정렬하여 긴 패턴이 먼저 매칭되도록
-    sorted_variations = sorted(MODEL_VARIATIONS.items(), key=lambda x: len(x[0]), reverse=True)
-    for variation, canonical in sorted_variations:
-        if variation in text or variation in normalized:
-            if canonical in model_index:
-                entries = model_index[canonical]
-                if manufacturer_label:
-                    for mfr, model in entries:
-                        if mfr.get("label") == manufacturer_label:
-                            return (mfr, model)
+    # 제조사가 지정된 경우: 해당 제조사 모델만 필터링하여 검색
+    if manufacturer_label:
+        # 해당 제조사의 모델만 추출
+        manufacturer_models: Dict[str, List[Tuple[Dict, Dict]]] = {}
+        for model_name, entries in model_index.items():
+            for mfr, model in entries:
+                if mfr.get("label") == manufacturer_label:
+                    if model_name not in manufacturer_models:
+                        manufacturer_models[model_name] = []
+                    manufacturer_models[model_name].append((mfr, model))
+
+        # 0. 변형 모델명으로 먼저 시도 (MODEL Y → 모델Y 등)
+        sorted_variations = sorted(MODEL_VARIATIONS.items(), key=lambda x: len(x[0]), reverse=True)
+        for variation, canonical in sorted_variations:
+            if _is_word_boundary_match(text, variation) or _is_word_boundary_match(normalized, variation):
+                if canonical in manufacturer_models:
+                    entries = manufacturer_models[canonical]
+                    if entries:
+                        return entries[0]
+
+        # 1. 길이 역순 정렬 (긴 모델명 우선 매칭: XM3 > M3)
+        sorted_models = sorted(manufacturer_models.items(), key=lambda x: len(x[0]), reverse=True)
+
+        for model_name, entries in sorted_models:
+            # 단어 경계 매칭 확인
+            if _is_word_boundary_match(normalized, model_name) or _is_word_boundary_match(text, model_name):
                 if entries:
                     return entries[0]
 
-    # 2. 정확한 모델명 매칭 시도 (model_index의 키)
-    # 길이 역순으로 정렬
+        # 2. 단어 경계 매칭 실패 시, substring 매칭 시도 (긴 것 우선)
+        for model_name, entries in sorted_models:
+            if model_name in normalized or model_name in text:
+                if entries:
+                    return entries[0]
+
+        return None
+
+    # 제조사 미지정: 전체 모델에서 검색
+
+    # 1. 변형 모델명으로 먼저 시도 (긴 키워드 우선 - GENESIS G80, TESLA MODEL Y 등)
+    sorted_variations = sorted(MODEL_VARIATIONS.items(), key=lambda x: len(x[0]), reverse=True)
+    for variation, canonical in sorted_variations:
+        if _is_word_boundary_match(text, variation) or _is_word_boundary_match(normalized, variation):
+            if canonical in model_index:
+                entries = model_index[canonical]
+                if entries:
+                    return entries[0]
+
+    # 2. 정확한 모델명 매칭 시도 (단어 경계 확인)
     sorted_models = sorted(model_index.items(), key=lambda x: len(x[0]), reverse=True)
     for model_name, entries in sorted_models:
-        if model_name in normalized or model_name in text:
-            # 제조사가 지정된 경우 해당 제조사 모델만
-            if manufacturer_label:
-                for mfr, model in entries:
-                    if mfr.get("label") == manufacturer_label:
-                        return (mfr, model)
-            # 제조사 미지정시 첫 번째 매칭
+        if _is_word_boundary_match(normalized, model_name) or _is_word_boundary_match(text, model_name):
             if entries:
                 return entries[0]
 
@@ -232,10 +295,6 @@ def _find_model_in_text(text: str, manufacturer_label: Optional[str]) -> Optiona
         canonical = MODEL_VARIATIONS.get(first_word, first_word)
         if canonical in model_index:
             entries = model_index[canonical]
-            if manufacturer_label:
-                for mfr, model in entries:
-                    if mfr.get("label") == manufacturer_label:
-                        return (mfr, model)
             if entries:
                 return entries[0]
 
@@ -254,14 +313,97 @@ def _check_keyword_in_title(title: str, keyword: str) -> bool:
     return keyword in title
 
 
+def _parse_year_range(year_str: str) -> Tuple[Optional[int], Optional[int]]:
+    """
+    연식 범위 문자열 파싱
+
+    예: "(08년~16년)" → (8, 16)
+        "(16년~현재)" → (16, 99)
+    """
+    match = TRIM_YEAR_PATTERN.search(year_str)
+    if not match:
+        return None, None
+
+    start_year = int(match.group(1))
+    end_part = match.group(2)
+
+    if "현재" in end_part:
+        end_year = 99  # 현재 = 무한대
+    else:
+        # "16년" 에서 숫자 추출
+        end_match = re.search(r'(\d{2})년', end_part)
+        end_year = int(end_match.group(1)) if end_match else 99
+
+    return start_year, end_year
+
+
+def _extract_title_year(title: str) -> Optional[int]:
+    """
+    제목에서 차량 연식 추출 (마지막 연식 범위 사용)
+
+    예: "아우디 NEW A4(05~16년) 2.0 TDI 콰트로 다이나믹 B8 (13년~14년)"
+        → 13 (마지막 괄호의 시작 연도)
+    """
+    matches = TRIM_YEAR_PATTERN.findall(title)
+    if matches:
+        # 마지막 매칭의 시작 연도 사용
+        return int(matches[-1][0])
+    return None
+
+
+def _extract_generation_code(text: str) -> Optional[str]:
+    """
+    텍스트에서 세대코드 추출 (B8, G70, F3 등)
+
+    트림명에 자주 등장하는 코드 우선 매칭
+    모델명과 혼동될 수 있는 코드(K5, K7, Q3 등)는 제외
+    """
+    # 모델명으로 사용되는 코드들 (세대코드에서 제외)
+    model_name_codes = {'K3', 'K5', 'K7', 'K8', 'K9',
+                        'Q2', 'Q3', 'Q5', 'Q7', 'Q8',
+                        'X1', 'X3', 'X5', 'X6', 'X7',
+                        'A3', 'A4', 'A5', 'A6', 'A7', 'A8',
+                        'S3', 'S4', 'S5', 'S6', 'S7', 'S8',
+                        'E1', 'E2', 'E3', 'E4', 'E5', 'E6'}
+
+    # 일반적인 세대코드 패턴들
+    common_codes = ['B5', 'B6', 'B7', 'B8', 'B9',  # 아우디
+                    'E90', 'E60', 'F30', 'G20', 'G30', 'G70',  # BMW
+                    'W212', 'W213', 'W222', 'W223',  # 벤츠
+                    'F3', 'DM', 'DN8', 'CN7', 'NX4', 'DL3',  # 기타
+                    'AD', 'MD', 'HD', 'XD',  # 현대 아반떼
+                    'IG', 'HG', 'TG',  # 현대 그랜저
+                    'TM', 'CM',  # 현대 싼타페
+                    'LF', 'YF', 'NF']  # 현대 쏘나타
+
+    for code in common_codes:
+        if code in text.upper() and code not in model_name_codes:
+            return code
+
+    # 일반 패턴 매칭 (모델명 제외)
+    match = GENERATION_CODE_PATTERN.search(text)
+    if match:
+        code = match.group(1).upper()
+        if code not in model_name_codes:
+            return code
+
+    return None
+
+
 def _find_best_trim(trims: List[Dict], title: str, fuel_type: Optional[str] = None) -> Optional[Dict]:
     """트림 목록에서 가장 적합한 트림 찾기"""
     if not trims:
         return None
 
-    # 연식 추출
-    year_match = TRIM_YEAR_PATTERN.search(title)
-    title_year = year_match.group(1) if year_match else None
+    # 제목에서 연식 추출 (마지막 연식 범위 사용)
+    title_year = _extract_title_year(title)
+
+    # 제목에서 세대코드 추출
+    title_gen_code = _extract_generation_code(title)
+
+    # 제목에서 세대 숫자 추출 (4세대, 5세대 등)
+    gen_num_match = GENERATION_NUMBER_PATTERN.search(title)
+    title_gen_num = int(gen_num_match.group(1)) if gen_num_match else None
 
     best_trim = None
     best_score = -1
@@ -270,33 +412,84 @@ def _find_best_trim(trims: List[Dict], title: str, fuel_type: Optional[str] = No
         trim_name = trim.get("trim", "")
         score = 0
 
-        # 연식 매칭
-        trim_year_match = TRIM_YEAR_PATTERN.search(trim_name)
-        if trim_year_match and title_year:
-            trim_start_year = trim_year_match.group(1)
-            if title_year == trim_start_year:
-                score += 10
-            elif abs(int(title_year) - int(trim_start_year)) <= 2:
-                score += 5
+        # 1. 세대코드 매칭 (B8, G70 등) - 가장 높은 우선순위
+        if title_gen_code:
+            trim_gen_code = _extract_generation_code(trim_name)
+            if trim_gen_code and title_gen_code.upper() == trim_gen_code.upper():
+                score += 20  # 세대코드 정확 매칭
+            else:
+                # 세대코드 → 트림 키워드 매핑 확인
+                mapped_keyword = GENERATION_TO_TRIM_KEYWORD.get(title_gen_code.upper())
+                if mapped_keyword and mapped_keyword.replace(' ', '') in trim_name.replace(' ', ''):
+                    score += 18  # 매핑된 키워드 매칭
 
-        # 연료 타입 매칭 (하이브리드, 전기 등)
+        # 2. 연식 범위 매칭
+        trim_start, trim_end = _parse_year_range(trim_name)
+        if trim_start is not None and title_year is not None:
+            # 차량 연식이 트림 범위 내에 있는지 확인
+            if trim_start <= title_year <= trim_end:
+                score += 15  # 범위 내 매칭
+            elif title_year == trim_start:
+                score += 10  # 시작 연도 정확 매칭
+            elif abs(title_year - trim_start) <= 2:
+                score += 5   # 근접 매칭
+
+        # 3. 트림명 접두어/키워드 매칭 (더 뉴, 신형, 올 뉴 등)
+        # 제목과 트림명에서 동일한 접두어가 있으면 점수 부여
+        # 공백을 제거하고 비교 (신형 K5 vs 신형K5)
+        title_normalized = title.replace(' ', '')
+        trim_normalized = trim_name.replace(' ', '')
+
+        trim_prefixes = ['더뉴', '뉴신형', '신형', '올뉴', '디올뉴', 'THENEW', 'ALLNEW']
+        prefix_matched = False
+        for prefix in trim_prefixes:
+            title_has = prefix in title_normalized
+            trim_has = prefix in trim_normalized
+            if title_has and trim_has:
+                score += 10  # 접두어 매칭
+                prefix_matched = True
+                break
+            elif title_has and not trim_has:
+                score -= 3   # 제목에는 있는데 트림에 없으면 페널티
+            elif not title_has and trim_has:
+                score -= 1   # 트림에만 있으면 약한 페널티
+
+        # 세대 숫자 매칭 (4세대 → B8 등) - 접두어 매칭 안됐을 때만
+        if not prefix_matched and title_gen_num and len(trims) > 1:
+            # 하이브리드 트림 제외하고 인덱스 계산
+            non_hybrid_trims = [t for t in trims if '하이브리드' not in t.get('trim', '')]
+            if trim in non_hybrid_trims:
+                trim_index = non_hybrid_trims.index(trim)
+                estimated_gen = len(non_hybrid_trims) - trim_index
+                if estimated_gen == title_gen_num:
+                    score += 8
+
+        # 4. 연료 타입 매칭 (하이브리드, 전기 등)
+        is_hybrid_trim = "하이브리드" in trim_name
+        is_ev_trim = "일렉트릭" in trim_name or "EV" in trim_name or "전기" in trim_name
+        is_phev_trim = "플러그인" in trim_name or "PHEV" in trim_name
+
         if fuel_type == "하이브리드":
-            if "하이브리드" in trim_name:
+            if is_hybrid_trim:
                 score += 5
             else:
                 score -= 3
         elif fuel_type == "전기":
-            if "일렉트릭" in trim_name or "EV" in trim_name or "전기" in trim_name:
+            if is_ev_trim:
                 score += 5
             else:
                 score -= 3
         elif fuel_type == "플러그인하이브리드":
-            if "플러그인" in trim_name or "PHEV" in trim_name:
+            if is_phev_trim:
                 score += 5
             else:
                 score -= 3
+        else:
+            # 연료 타입 미지정 시, 일반 트림 우선 (하이브리드/전기 트림 페널티)
+            if is_hybrid_trim or is_ev_trim or is_phev_trim:
+                score -= 2
 
-        # 키워드 매칭 (N 라인 등)
+        # 5. 키워드 매칭 (N 라인 등)
         keywords = ["N"]
         for kw in keywords:
             title_has_kw = _check_keyword_in_title(title, kw)
@@ -310,7 +503,7 @@ def _find_best_trim(trims: List[Dict], title: str, fuel_type: Optional[str] = No
             best_score = score
             best_trim = trim
 
-    # 매칭 점수가 너무 낮으면 None
+    # 매칭 점수가 너무 낮으면 첫 번째 트림 반환
     return best_trim if best_score >= 0 else (trims[0] if trims else None)
 
 
