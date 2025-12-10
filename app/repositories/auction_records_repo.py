@@ -67,6 +67,17 @@ def _parse_csv_row(row: Dict[str, str], date: str, filename: str) -> Dict[str, o
     raw_fuel = row.get("fuel", "").strip()
     raw_trans = row.get("trans", "").strip()
     raw_score = row.get("score", "").strip()
+    auction_name = row.get("auction_name", "").strip()
+
+    # 오토허브 경매장: color/trans 컬럼이 뒤바뀌어 내려옴
+    is_autohub = auction_name == "오토허브 경매장"
+    if is_autohub:
+        # trans -> color, color -> trans 스왑
+        actual_color = raw_trans
+        actual_trans = raw_color
+    else:
+        actual_color = raw_color
+        actual_trans = raw_trans
 
     # Title 파싱 (JSON 기준 ID 포함)
     parsed = parse_title(raw_post_title or raw_title)
@@ -94,7 +105,7 @@ def _parse_csv_row(row: Dict[str, str], date: str, filename: str) -> Dict[str, o
         # 경매 정보
         "auction_date": auction_date,
         "sell_number": _safe_int(row.get("sell_number", "")),
-        "auction_house": row.get("auction_name", "").strip() or None,
+        "auction_house": auction_name or None,
 
         # JSON 기준 ID (car_models.json 기준)
         "manufacturer_id": parsed.manufacturer_id,
@@ -108,7 +119,7 @@ def _parse_csv_row(row: Dict[str, str], date: str, filename: str) -> Dict[str, o
         "trim": parsed.trim,
         "year": _safe_int(row.get("year", "")),
         "fuel_type": fuel_type,
-        "transmission": normalize_transmission(raw_trans),
+        "transmission": normalize_transmission(actual_trans),
         "engine_cc": parsed.engine_cc,
         "usage_type": usage_type,
 
@@ -116,7 +127,7 @@ def _parse_csv_row(row: Dict[str, str], date: str, filename: str) -> Dict[str, o
         "km": _safe_int(row.get("km", "")),
         "price": _safe_int(row.get("price", "")),
         "score": normalize_score(raw_score),
-        "color": raw_color or None,
+        "color": actual_color or None,
         "image_url": row.get("image", "").strip() or None,
 
         # 원본 필드 보존
