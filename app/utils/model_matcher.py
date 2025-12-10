@@ -489,7 +489,18 @@ def _find_best_trim(trims: List[Dict], title: str, fuel_type: Optional[str] = No
             if is_hybrid_trim or is_ev_trim or is_phev_trim:
                 score -= 2
 
-        # 5. 키워드 매칭 (N 라인 등)
+        # 5. 키워드 매칭 (N 라인, 스포츠 등)
+        # 제목에 없는 키워드가 트림명에 있으면 페널티
+        trim_specific_keywords = ["스포츠", "Sport", "N라인", "N Line", "GT"]
+        for kw in trim_specific_keywords:
+            title_has_kw = kw.lower() in title.lower()
+            trim_has_kw = kw.lower() in trim_name.lower()
+            if title_has_kw and trim_has_kw:
+                score += 5  # 둘 다 있으면 보너스
+            elif not title_has_kw and trim_has_kw:
+                score -= 5  # 제목에 없는데 트림에 있으면 페널티
+
+        # N 라인 특수 처리 (독립 단어로만 매칭)
         keywords = ["N"]
         for kw in keywords:
             title_has_kw = _check_keyword_in_title(title, kw)
