@@ -535,3 +535,210 @@ def get_by_id(record_id: int) -> Optional[Dict[str, object]]:
     if isinstance(data, list) and data:
         return data[0] if isinstance(data[0], dict) else None
     return None
+
+
+def get_aggregated_history(
+    manufacturer_id: str,
+    model_id: str,
+    trim_id: Optional[str] = None,
+    min_dates: int = 5,
+    max_per_date: int = 10,
+    max_total: int = 100,
+    months: int = 12,
+    exclude_date: Optional[str] = None,
+) -> Dict[str, object]:
+    """
+    차량 시세 히스토리 집계 조회
+
+    날짜별로 분산된 데이터를 제공하여 그래프가 제대로 그려지도록 합니다.
+    인기 모델의 경우 특정 날짜에 데이터가 집중되는 문제를 해결합니다.
+
+    Args:
+        manufacturer_id: 제조사 ID (필수)
+        model_id: 모델 ID (필수)
+        trim_id: 트림 ID (선택, 없으면 모델 전체)
+        min_dates: 최소 확보할 날짜 수 (기본값 5)
+        max_per_date: 날짜별 최대 거래 건수 (기본값 10)
+        max_total: 전체 최대 거래 건수 (기본값 100)
+        months: 조회 기간 개월 수 (기본값 12)
+        exclude_date: 제외할 날짜 (현재 경매일, YYYY-MM-DD 형식)
+
+    Returns:
+        {
+            "summary": { ... },
+            "data": [ ... ]
+        }
+    """
+    require_enabled()
+
+    from datetime import timedelta
+    from dateutil.relativedelta import relativedelta
+
+    sess = session()
+    url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
+
+    # 조회 기간 계산
+    today = datetime.now(timezone.utc).date()
+    date_from = (today - relativedelta(months=months)).isoformat()
+
+    # 필터 조건 구성
+    params: Dict[str, str] = {
+        "select": "auction_date,price,km,year,score",
+        "manufacturer_id": f"eq.{manufacturer_id}",
+        "model_id": f"eq.{model_id}",
+        "order": "auction_date.desc,price.asc",
+        "limit": "2000",  # 충분한 데이터 확보
+    }
+
+    # 트림 필터
+    if trim_id:
+        params["trim_id"] = f"eq.{trim_id}"
+
+    # 날짜 범위 및 제외 조건
+    and_conditions = [f"auction_date.gte.{date_from}"]
+    if exclude_date:
+        and_conditions.append(f"auction_date.neq.{exclude_date}")
+    # price가 null이 아닌 레코드만
+    and_conditions.append("price.not.is.null")
+
+    params["and"] = f"({','.join(and_conditions)})"
+
+    # 데이터 조회
+    resp = sess.get(url, headers=rest_headers(), params=params, timeout=60)
+    if resp.status_code == 404:
+        return _empty_aggregated_response()
+    resp.raise_for_status()
+
+    raw_data = resp.json()
+    if not isinstance(raw_data, list) or not raw_data:
+        return _empty_aggregated_response()
+
+    # 날짜별 그룹화
+    date_groups: Dict[str, List[Dict[str, object]]] = {}
+    for row in raw_data:
+        if not isinstance(row, dict):
+            continue
+        date = row.get("auction_date")
+        if not date:
+            continue
+        if date not in date_groups:
+            date_groups[date] = []
+        date_groups[date].append(row)
+
+    if not date_groups:
+        return _empty_aggregated_response()
+
+    # 날짜 역순 정렬 (최신 날짜부터)
+    sorted_dates = sorted(date_groups.keys(), reverse=True)
+
+    # 날짜별 샘플링 및 집계
+    result_data: List[Dict[str, object]] = []
+    total_trades_count = 0
+    all_prices: List[int] = []
+
+    for date in sorted_dates:
+        # 최소 날짜 수 확보 전까지는 계속 수집
+        # 최소 날짜 수 확보 후에는 max_total 체크
+        if len(result_data) >= min_dates and total_trades_count >= max_total:
+            break
+
+        trades = date_groups[date]
+        original_count = len(trades)
+
+        # 가격이 있는 거래만 필터
+        valid_trades = [t for t in trades if t.get("price") is not None]
+        if not valid_trades:
+            continue
+
+        # 날짜별 통계 계산 (원본 기준)
+        prices = [t["price"] for t in valid_trades]
+        date_min = min(prices)
+        date_max = max(prices)
+        date_avg = sum(prices) / len(prices)
+
+        # 균등 샘플링 (가격 기준)
+        sampled_trades = _sample_trades_by_price(valid_trades, max_per_date)
+
+        # 남은 허용량 계산
+        remaining = max_total - total_trades_count
+        if remaining < len(sampled_trades) and len(result_data) >= min_dates:
+            sampled_trades = sampled_trades[:remaining]
+
+        # 결과에 추가
+        trade_items = [
+            {
+                "price": t.get("price"),
+                "km": t.get("km"),
+                "year": t.get("year"),
+                "score": t.get("score"),
+            }
+            for t in sampled_trades
+        ]
+
+        result_data.append({
+            "date": date,
+            "count": original_count,
+            "avg_price": round(date_avg, 1),
+            "min_price": date_min,
+            "max_price": date_max,
+            "trades": trade_items,
+        })
+
+        total_trades_count += len(sampled_trades)
+        all_prices.extend([t.get("price") for t in sampled_trades if t.get("price")])
+
+    # 날짜 오름차순 정렬 (그래프 X축 순서)
+    result_data.sort(key=lambda x: x["date"])
+
+    # 전체 통계 계산
+    summary = {
+        "total_count": total_trades_count,
+        "date_count": len(result_data),
+        "min_price": min(all_prices) if all_prices else None,
+        "max_price": max(all_prices) if all_prices else None,
+        "avg_price": round(sum(all_prices) / len(all_prices), 1) if all_prices else None,
+    }
+
+    return {
+        "summary": summary,
+        "data": result_data,
+    }
+
+
+def _sample_trades_by_price(
+    trades: List[Dict[str, object]],
+    max_count: int
+) -> List[Dict[str, object]]:
+    """
+    가격 기준 균등 샘플링
+
+    최저~최고 가격 범위에서 대표성 있는 샘플을 선택합니다.
+    """
+    if len(trades) <= max_count:
+        return trades
+
+    # 가격 기준 정렬
+    sorted_trades = sorted(trades, key=lambda x: x.get("price") or 0)
+
+    # 균등 간격으로 샘플링
+    step = len(sorted_trades) / max_count
+    sampled = []
+    for i in range(max_count):
+        idx = int(i * step)
+        sampled.append(sorted_trades[idx])
+
+    return sampled
+
+
+def _empty_aggregated_response() -> Dict[str, object]:
+    """빈 집계 응답 반환"""
+    return {
+        "summary": {
+            "total_count": 0,
+            "date_count": 0,
+            "min_price": None,
+            "max_price": None,
+            "avg_price": None,
+        },
+        "data": [],
+    }

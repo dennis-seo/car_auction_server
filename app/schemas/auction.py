@@ -200,3 +200,71 @@ class AuctionResponse(BaseModel):
     source_filename: str = Field(..., description="원본 파일명", example="auction_data_250929.csv")
     row_count: int = Field(..., description="총 차량 수", example=150)
     items: List[AuctionItem] = Field(..., description="차량 목록")
+
+
+# ===== 차량 시세 히스토리 집계 API 스키마 =====
+
+class TradeItem(BaseModel):
+    """개별 거래 정보"""
+    price: Optional[int] = Field(None, description="낙찰가 (만원)", example=3190)
+    km: Optional[int] = Field(None, description="주행거리 (km)", example=45000)
+    year: Optional[int] = Field(None, description="연식", example=2023)
+    score: Optional[str] = Field(None, description="평가등급", example="A / B")
+
+
+class DateAggregation(BaseModel):
+    """날짜별 집계 데이터"""
+    date: str = Field(..., description="경매 날짜 (YYYY-MM-DD)", example="2025-11-27")
+    count: int = Field(..., description="해당 날짜 원본 거래 건수", example=15)
+    avg_price: Optional[float] = Field(None, description="해당 날짜 평균가", example=3250.5)
+    min_price: Optional[int] = Field(None, description="해당 날짜 최저가", example=2800)
+    max_price: Optional[int] = Field(None, description="해당 날짜 최고가", example=3700)
+    trades: List[TradeItem] = Field(default_factory=list, description="개별 거래 (최대 max_per_date건)")
+
+
+class AggregatedSummary(BaseModel):
+    """전체 집계 요약"""
+    total_count: int = Field(..., description="전체 거래 건수", example=85)
+    date_count: int = Field(..., description="날짜 수", example=12)
+    min_price: Optional[int] = Field(None, description="전체 최저가", example=2500)
+    max_price: Optional[int] = Field(None, description="전체 최고가", example=4200)
+    avg_price: Optional[float] = Field(None, description="전체 평균가", example=3150.8)
+
+
+class AggregatedHistoryResponse(BaseModel):
+    """
+    차량 시세 히스토리 집계 응답
+
+    날짜별로 분산된 거래 데이터와 통계를 제공합니다.
+    인기 모델의 경우 특정 날짜에 데이터가 집중되는 문제를 해결하기 위해
+    날짜별 샘플링을 적용합니다.
+    """
+    summary: AggregatedSummary = Field(..., description="전체 집계 요약")
+    data: List[DateAggregation] = Field(..., description="날짜별 집계 데이터 (날짜 오름차순)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "summary": {
+                    "total_count": 85,
+                    "date_count": 12,
+                    "min_price": 2500,
+                    "max_price": 4200,
+                    "avg_price": 3150.8
+                },
+                "data": [
+                    {
+                        "date": "2025-10-15",
+                        "count": 8,
+                        "avg_price": 3100.0,
+                        "min_price": 2800,
+                        "max_price": 3400,
+                        "trades": [
+                            {"price": 2800, "km": 52000, "year": 2022, "score": "B / B"},
+                            {"price": 3100, "km": 38000, "year": 2023, "score": "A / B"},
+                            {"price": 3400, "km": 25000, "year": 2023, "score": "A / A"}
+                        ]
+                    }
+                ]
+            }
+        }
