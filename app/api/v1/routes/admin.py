@@ -1,3 +1,4 @@
+import hashlib
 import os
 from typing import Optional
 
@@ -7,6 +8,11 @@ from app.core.config import settings
 from app.crawler.downloader import download_if_changed
 from app.utils.bizdate import next_business_day
 from app.repositories.file_repo import resolve_csv_filepath
+
+
+def _hash_content(content: bytes) -> str:
+    """SHA256 해시 생성"""
+    return hashlib.sha256(content).hexdigest()
 
 try:
     from app.repositories import supabase_repo  # type: ignore
@@ -69,12 +75,6 @@ def admin_crawl(
         # If Supabase is enabled, upload when changed, or when doc doesn't exist yet
         if settings.SUPABASE_ENABLED and supabase_repo is not None and (result.get("path") or result.get("content")):
             try:
-                # Determine whether target already exists
-                try:
-                    exists = supabase_repo.get_csv(target_date)  # type: ignore[attr-defined]
-                except Exception:
-                    exists = None
-
                 content = None
                 filename = None
                 if result.get("path"):
@@ -86,8 +86,24 @@ def admin_crawl(
                     content = result.get("content")
                     filename = result.get("filename") or f"{prefix}{src_date}.{ext}"
 
-                should_upload = bool(result.get("changed")) or (exists is None) or force
-                if should_upload and content and filename:
+                # 기존 파일 해시와 새 파일 해시 비교
+                existing_hash = None
+                new_hash = None
+                if content:
+                    new_hash = _hash_content(content)
+                    result["new_file_hash"] = new_hash
+                    try:
+                        existing_hash = supabase_repo.get_file_hash(target_date)  # type: ignore[attr-defined]
+                        result["existing_file_hash"] = existing_hash
+                    except Exception:
+                        existing_hash = None
+
+                # 해시가 같으면 스킵 (force가 아닌 경우)
+                hash_changed = (existing_hash is None) or (new_hash != existing_hash)
+                result["hash_changed"] = hash_changed
+
+                should_upload = (hash_changed or force) and content and filename
+                if should_upload:
                     supabase_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
                     result["uploaded_to_supabase"] = True
                     result["supabase_row_id"] = target_date
@@ -104,6 +120,7 @@ def admin_crawl(
                 else:
                     result["uploaded_to_supabase"] = False
                     result["supabase_row_id"] = target_date
+                    result["skip_reason"] = "hash_unchanged" if not hash_changed else "no_content"
             except Exception as fe:
                 result["uploaded_to_supabase"] = False
                 result["supabase_error"] = str(fe)
