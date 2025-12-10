@@ -231,11 +231,43 @@ def save_csv(date: str, filename: str, content: bytes) -> int:
     return len(rows)
 
 
-def list_dates() -> List[str]:
-    """저장된 모든 날짜 목록 조회 (YYYY-MM-DD 형식, 페이지네이션 적용)"""
+def list_dates(limit: Optional[int] = None) -> List[str]:
+    """
+    저장된 날짜 목록 조회 (YYYY-MM-DD 형식)
+
+    Args:
+        limit: 반환할 최대 날짜 수 (None이면 전체)
+
+    Returns:
+        날짜 목록 (최신순 정렬)
+    """
     require_enabled()
 
     sess = session()
+
+    # RPC 함수를 통한 DISTINCT 쿼리 시도
+    # Supabase에서 distinct_auction_dates 함수가 있으면 사용
+    rpc_url = f"{base_url()}/rest/v1/rpc/distinct_auction_dates"
+    try:
+        rpc_params: Dict[str, str] = {}
+        if limit:
+            rpc_params["p_limit"] = str(limit)
+
+        resp = sess.post(
+            rpc_url,
+            headers=rest_headers(json_body=True),
+            json={"p_limit": limit} if limit else {},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list):
+                dates = [row.get("auction_date") if isinstance(row, dict) else row for row in data]
+                return [d for d in dates if isinstance(d, str)]
+    except Exception:
+        pass  # RPC 함수가 없으면 기존 방식으로 폴백
+
+    # 폴백: 기존 페이지네이션 방식
     url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
 
     seen: set[str] = set()
@@ -266,11 +298,21 @@ def list_dates() -> List[str]:
             if isinstance(value, str):
                 seen.add(value)
 
+        # limit이 지정되고 충분한 날짜를 수집했으면 조기 종료
+        if limit and len(seen) >= limit:
+            break
+
         if len(payload) < page_size:
             break
         offset += page_size
 
-    return sorted(seen, reverse=True)
+    result = sorted(seen, reverse=True)
+
+    # limit 적용
+    if limit and len(result) > limit:
+        result = result[:limit]
+
+    return result
 
 
 def get_records_by_date(date: str) -> List[Dict[str, object]]:

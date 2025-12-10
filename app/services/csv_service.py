@@ -26,15 +26,29 @@ def _auction_records_enabled() -> bool:
     return settings.SUPABASE_ENABLED and auction_records_repo is not None
 
 
-def list_available_dates() -> list[str]:
-    """사용 가능한 날짜 목록 조회 (YYMMDD 형식)
+def list_available_dates(limit: Optional[int] = None) -> list[str]:
+    """사용 가능한 날짜 목록 조회 (YYYY-MM-DD 형식)
 
-    auction_data 테이블에서 날짜 목록을 조회합니다.
+    Args:
+        limit: 반환할 최대 날짜 수 (None이면 전체)
+
+    Returns:
+        날짜 목록 (최신순 정렬)
     """
+    # auction_records 테이블에서 날짜 조회 (우선)
+    if _auction_records_enabled():
+        try:
+            return auction_records_repo.list_dates(limit=limit)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
     # auction_data 테이블에서 날짜 조회
     if _supabase_enabled():
         try:
-            return supabase_repo.list_dates()  # type: ignore[attr-defined]
+            result = supabase_repo.list_dates()  # type: ignore[attr-defined]
+            if limit and len(result) > limit:
+                result = result[:limit]
+            return result
         except Exception:
             pass
 
@@ -51,6 +65,10 @@ def list_available_dates() -> list[str]:
                 except Exception:
                     continue
     result = sorted(mapped, reverse=True)
+
+    if limit and len(result) > limit:
+        result = result[:limit]
+
     return result
 
 
