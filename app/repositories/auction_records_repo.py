@@ -315,6 +315,38 @@ def list_dates(limit: Optional[int] = None) -> List[str]:
     return result
 
 
+def exists(date: str) -> bool:
+    """
+    해당 날짜의 데이터 존재 여부 확인
+
+    Args:
+        date: YYMMDD 또는 YYYY-MM-DD 형식
+
+    Returns:
+        데이터 존재 여부
+    """
+    require_enabled()
+
+    # YYMMDD -> YYYY-MM-DD 변환
+    auction_date = yymmdd_to_iso(date)
+
+    sess = session()
+    url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
+    params = {
+        "select": "id",
+        "auction_date": f"eq.{auction_date}",
+        "limit": "1",
+    }
+
+    resp = sess.get(url, headers=rest_headers(), params=params, timeout=10)
+    if resp.status_code == 404:
+        return False
+    resp.raise_for_status()
+
+    data = resp.json()
+    return isinstance(data, list) and len(data) > 0
+
+
 def get_records_by_date(date: str) -> List[Dict[str, object]]:
     """
     특정 날짜의 경매 레코드 조회

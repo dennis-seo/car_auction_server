@@ -1,5 +1,7 @@
 import hashlib
+import logging
 import os
+import traceback
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Header
@@ -8,6 +10,9 @@ from app.core.config import settings
 from app.crawler.downloader import download_if_changed
 from app.utils.bizdate import next_business_day
 from app.repositories.file_repo import resolve_csv_filepath
+
+
+logger = logging.getLogger("admin")
 
 
 def _hash_content(content: bytes) -> str:
@@ -89,6 +94,8 @@ def admin_crawl(
                 # 기존 파일 해시와 새 파일 해시 비교
                 existing_hash = None
                 new_hash = None
+                auction_records_exists = False
+
                 if content:
                     new_hash = _hash_content(content)
                     result["new_file_hash"] = new_hash
@@ -98,11 +105,22 @@ def admin_crawl(
                     except Exception:
                         existing_hash = None
 
-                # 해시가 같으면 스킵 (force가 아닌 경우)
-                hash_changed = (existing_hash is None) or (new_hash != existing_hash)
-                result["hash_changed"] = hash_changed
+                    # auction_records 테이블에도 데이터가 있는지 확인
+                    if auction_records_repo is not None:
+                        try:
+                            auction_records_exists = auction_records_repo.exists(target_date)  # type: ignore[attr-defined]
+                            result["auction_records_exists"] = auction_records_exists
+                        except Exception:
+                            auction_records_exists = False
+                            result["auction_records_exists"] = False
 
-                should_upload = (hash_changed or force) and content and filename
+                # 해시가 같아도 auction_records에 데이터가 없으면 저장 진행
+                hash_changed = (existing_hash is None) or (new_hash != existing_hash)
+                needs_auction_records = not auction_records_exists
+                result["hash_changed"] = hash_changed
+                result["needs_auction_records"] = needs_auction_records
+
+                should_upload = (hash_changed or needs_auction_records or force) and content and filename
                 if should_upload:
                     supabase_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
                     result["uploaded_to_supabase"] = True
@@ -114,13 +132,32 @@ def admin_crawl(
                             record_count = auction_records_repo.save_csv(target_date, filename, content)
                             result["uploaded_to_auction_records"] = True
                             result["auction_records_count"] = record_count
+                            logger.info(
+                                "auction_records 저장 성공: date=%s, records=%d",
+                                target_date, record_count
+                            )
                         except Exception as ar_err:
                             result["uploaded_to_auction_records"] = False
                             result["auction_records_error"] = str(ar_err)
+                            # 상세 로그 출력 (traceback 포함)
+                            logger.error(
+                                "auction_records 저장 실패: date=%s, filename=%s, "
+                                "content_size=%d, error=%s\n%s",
+                                target_date,
+                                filename,
+                                len(content) if content else 0,
+                                str(ar_err),
+                                traceback.format_exc()
+                            )
                 else:
                     result["uploaded_to_supabase"] = False
                     result["supabase_row_id"] = target_date
-                    result["skip_reason"] = "hash_unchanged" if not hash_changed else "no_content"
+                    if not hash_changed and auction_records_exists:
+                        result["skip_reason"] = "hash_unchanged_and_records_exist"
+                    elif not content:
+                        result["skip_reason"] = "no_content"
+                    else:
+                        result["skip_reason"] = "unknown"
             except Exception as fe:
                 result["uploaded_to_supabase"] = False
                 result["supabase_error"] = str(fe)
@@ -191,9 +228,22 @@ def admin_ensure_date(
                         record_count = auction_records_repo.save_csv(target_date, filename, content)
                         result_data["uploaded_to_auction_records"] = True
                         result_data["auction_records_count"] = record_count
+                        logger.info(
+                            "auction_records 저장 성공 (ensure/local): date=%s, records=%d",
+                            target_date, record_count
+                        )
                     except Exception as ar_err:
                         result_data["uploaded_to_auction_records"] = False
                         result_data["auction_records_error"] = str(ar_err)
+                        logger.error(
+                            "auction_records 저장 실패 (ensure/local): date=%s, filename=%s, "
+                            "content_size=%d, error=%s\n%s",
+                            target_date,
+                            filename,
+                            len(content) if content else 0,
+                            str(ar_err),
+                            traceback.format_exc()
+                        )
 
                 return result_data
             except Exception as fe:
@@ -251,9 +301,22 @@ def admin_ensure_date(
                     record_count = auction_records_repo.save_csv(target_date, final_filename, content)
                     result_data["uploaded_to_auction_records"] = True
                     result_data["auction_records_count"] = record_count
+                    logger.info(
+                        "auction_records 저장 성공 (ensure/download): date=%s, records=%d",
+                        target_date, record_count
+                    )
                 except Exception as ar_err:
                     result_data["uploaded_to_auction_records"] = False
                     result_data["auction_records_error"] = str(ar_err)
+                    logger.error(
+                        "auction_records 저장 실패 (ensure/download): date=%s, filename=%s, "
+                        "content_size=%d, error=%s\n%s",
+                        target_date,
+                        final_filename,
+                        len(content) if content else 0,
+                        str(ar_err),
+                        traceback.format_exc()
+                    )
 
             return result_data
         except Exception as fe:
