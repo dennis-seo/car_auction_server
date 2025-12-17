@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     # Optional Google credentials (used by Firestore migration scripts)
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
+    # Google OAuth 설정
+    GOOGLE_CLIENT_ID: str = ""
+
+    # JWT 설정
+    JWT_SECRET_KEY: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 10080  # 7일
+
     # pydantic-settings v2 style config
     model_config = SettingsConfigDict(
         env_file=os.getenv("ENV_FILE", _PROJECT_ROOT_ENV),
