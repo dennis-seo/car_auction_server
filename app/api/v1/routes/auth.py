@@ -4,6 +4,7 @@
 Google OAuth 로그인 및 사용자 정보 조회
 """
 
+import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -15,6 +16,7 @@ from app.utils.auth import (
 )
 from app.repositories import users_repo
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["인증"])
 
@@ -62,8 +64,11 @@ async def google_login(request: GoogleLoginRequest):
     2. 사용자 조회 또는 생성
     3. JWT 액세스 토큰 발급
     """
+    logger.info("Google login attempt started")
+
     # Google 토큰 검증
     google_user = verify_google_token(request.id_token)
+    logger.info("Google token verified for: %s", google_user.email)
 
     # 사용자 조회 또는 생성
     try:
@@ -73,7 +78,9 @@ async def google_login(request: GoogleLoginRequest):
             name=google_user.name,
             profile_image=google_user.picture
         )
+        logger.info("User found/created: id=%s email=%s", user.get("id"), user.get("email"))
     except Exception as e:
+        logger.error("User find_or_create failed: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"사용자 처리 중 오류가 발생했습니다: {str(e)}"

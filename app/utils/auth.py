@@ -59,6 +59,8 @@ def verify_google_token(token: str) -> GoogleTokenPayload:
             settings.GOOGLE_CLIENT_ID
         )
 
+        logger.info("Google token verified: sub=%s email=%s", idinfo.get("sub"), idinfo.get("email"))
+
         return GoogleTokenPayload(
             sub=idinfo["sub"],
             email=idinfo["email"],
@@ -66,10 +68,16 @@ def verify_google_token(token: str) -> GoogleTokenPayload:
             picture=idinfo.get("picture")
         )
     except ValueError as e:
-        logger.warning("Google token verification failed: %s", e)
+        logger.warning("Google token verification failed (ValueError): %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="유효하지 않은 Google 토큰입니다"
+            detail=f"유효하지 않은 Google 토큰입니다: {str(e)}"
+        )
+    except Exception as e:
+        logger.error("Google token verification failed (unexpected): %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Google 토큰 검증 중 오류가 발생했습니다: {str(e)}"
         )
 
 
