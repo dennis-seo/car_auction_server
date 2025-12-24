@@ -62,6 +62,49 @@ def _validate_admin_token(token: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _save_to_auction_records(
+    target_date: str,
+    filename: str,
+    content: bytes,
+    result_data: dict,
+    source: str = ""
+) -> None:
+    """
+    auction_records 테이블에 CSV 데이터 저장 (공통 함수)
+
+    Args:
+        target_date: 저장할 날짜 (YYMMDD)
+        filename: 파일명
+        content: CSV 바이트 내용
+        result_data: 결과를 저장할 딕셔너리
+        source: 로그용 소스 표시 (예: "ensure/local", "ensure/download")
+    """
+    if auction_records_repo is None:
+        return
+
+    source_suffix = f" ({source})" if source else ""
+    try:
+        record_count = auction_records_repo.save_csv(target_date, filename, content)  # type: ignore[attr-defined]
+        result_data["uploaded_to_auction_records"] = True
+        result_data["auction_records_count"] = record_count
+        logger.info(
+            "auction_records 저장 성공%s: date=%s, records=%d",
+            source_suffix, target_date, record_count
+        )
+    except Exception as ar_err:
+        result_data["uploaded_to_auction_records"] = False
+        result_data["auction_records_error"] = str(ar_err)
+        logger.error(
+            "auction_records 저장 실패%s: date=%s, filename=%s, content_size=%d, error=%s\n%s",
+            source_suffix,
+            target_date,
+            filename,
+            len(content) if content else 0,
+            str(ar_err),
+            traceback.format_exc()
+        )
+
+
 @router.post("/admin/crawl")
 def admin_crawl(
     authorization: Optional[str] = Header(default=None),
@@ -182,28 +225,8 @@ def admin_crawl(
 
                 # auction_records 저장 (해시 변경 또는 레코드 없는 경우)
                 should_upload_auction_records = (hash_changed or needs_auction_records or force) and content and filename
-                if should_upload_auction_records and auction_records_repo is not None:
-                    try:
-                        record_count = auction_records_repo.save_csv(target_date, filename, content)
-                        result["uploaded_to_auction_records"] = True
-                        result["auction_records_count"] = record_count
-                        logger.info(
-                            "auction_records 저장 성공: date=%s, records=%d",
-                            target_date, record_count
-                        )
-                    except Exception as ar_err:
-                        result["uploaded_to_auction_records"] = False
-                        result["auction_records_error"] = str(ar_err)
-                        # 상세 로그 출력 (traceback 포함)
-                        logger.error(
-                            "auction_records 저장 실패: date=%s, filename=%s, "
-                            "content_size=%d, error=%s\n%s",
-                            target_date,
-                            filename,
-                            len(content) if content else 0,
-                            str(ar_err),
-                            traceback.format_exc()
-                        )
+                if should_upload_auction_records:
+                    _save_to_auction_records(target_date, filename, content, result)
                 elif not should_upload_auction_records:
                     if not content:
                         result["skip_reason"] = "no_content"
@@ -273,27 +296,7 @@ def admin_ensure_date(
                 }
 
                 # 새 auction_records 테이블에도 저장
-                if auction_records_repo is not None:
-                    try:
-                        record_count = auction_records_repo.save_csv(target_date, filename, content)
-                        result_data["uploaded_to_auction_records"] = True
-                        result_data["auction_records_count"] = record_count
-                        logger.info(
-                            "auction_records 저장 성공 (ensure/local): date=%s, records=%d",
-                            target_date, record_count
-                        )
-                    except Exception as ar_err:
-                        result_data["uploaded_to_auction_records"] = False
-                        result_data["auction_records_error"] = str(ar_err)
-                        logger.error(
-                            "auction_records 저장 실패 (ensure/local): date=%s, filename=%s, "
-                            "content_size=%d, error=%s\n%s",
-                            target_date,
-                            filename,
-                            len(content) if content else 0,
-                            str(ar_err),
-                            traceback.format_exc()
-                        )
+                _save_to_auction_records(target_date, filename, content, result_data, "ensure/local")
 
                 return result_data
             except Exception as fe:
@@ -346,27 +349,7 @@ def admin_ensure_date(
             }
 
             # 새 auction_records 테이블에도 저장
-            if auction_records_repo is not None:
-                try:
-                    record_count = auction_records_repo.save_csv(target_date, final_filename, content)
-                    result_data["uploaded_to_auction_records"] = True
-                    result_data["auction_records_count"] = record_count
-                    logger.info(
-                        "auction_records 저장 성공 (ensure/download): date=%s, records=%d",
-                        target_date, record_count
-                    )
-                except Exception as ar_err:
-                    result_data["uploaded_to_auction_records"] = False
-                    result_data["auction_records_error"] = str(ar_err)
-                    logger.error(
-                        "auction_records 저장 실패 (ensure/download): date=%s, filename=%s, "
-                        "content_size=%d, error=%s\n%s",
-                        target_date,
-                        final_filename,
-                        len(content) if content else 0,
-                        str(ar_err),
-                        traceback.format_exc()
-                    )
+            _save_to_auction_records(target_date, final_filename, content, result_data, "ensure/download")
 
             return result_data
         except Exception as fe:
