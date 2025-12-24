@@ -48,7 +48,7 @@ def get_csv(
         if settings.SUPABASE_ENABLED:
             content, filename = get_csv_content_for_date(date)
             if content is None:
-                raise HTTPException(status_code=404, detail="CSV not found")
+                raise HTTPException(status_code=404, detail="CSV 파일을 찾을 수 없습니다")
             headers = {
                 "Content-Disposition": f"attachment; filename={filename}",
             }
@@ -57,7 +57,7 @@ def get_csv(
         # Local mode: serve file
         path, filename = get_csv_path_for_date(date)
         if path is None:
-            raise HTTPException(status_code=404, detail="CSV not found")
+            raise HTTPException(status_code=404, detail="CSV 파일을 찾을 수 없습니다")
         return FileResponse(
             path,
             media_type="text/csv",
@@ -66,5 +66,5 @@ def get_csv(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail="Failed to fetch CSV") from exc
+        raise HTTPException(status_code=500, detail="CSV 파일 조회 실패") from exc
 

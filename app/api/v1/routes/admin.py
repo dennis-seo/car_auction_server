@@ -54,12 +54,12 @@ def _validate_admin_token(token: Optional[str]) -> None:
         HTTPException: 토큰이 없거나 유효하지 않은 경우
     """
     if not settings.ADMIN_TOKEN:
-        raise HTTPException(status_code=500, detail="ADMIN_TOKEN not configured")
+        raise HTTPException(status_code=500, detail="ADMIN_TOKEN이 설정되지 않았습니다")
     if not token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(status_code=401, detail="인증이 필요합니다")
     # secrets.compare_digest로 타이밍 공격 방지
     if not secrets.compare_digest(token, settings.ADMIN_TOKEN):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(status_code=401, detail="인증이 필요합니다")
 
 
 def _save_to_auction_records(
@@ -118,7 +118,7 @@ def admin_crawl(
     _validate_admin_token(token)
 
     if not settings.CRAWL_URL:
-        raise HTTPException(status_code=400, detail="CRAWL_URL not configured")
+        raise HTTPException(status_code=400, detail="CRAWL_URL이 설정되지 않았습니다")
 
     try:
         # Decide the original/source date we intend to fetch/save for
@@ -237,7 +237,7 @@ def admin_crawl(
                 result["supabase_error"] = str(fe)
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"crawl failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"크롤링 실패: {exc}") from exc
 
 
 @router.post("/admin/ensure/{date}")
@@ -258,7 +258,7 @@ def admin_ensure_date(
     _validate_admin_token(token)
 
     if not settings.SUPABASE_ENABLED or supabase_repo is None:
-        raise HTTPException(status_code=400, detail="Supabase is not enabled/configured")
+        raise HTTPException(status_code=400, detail="Supabase가 활성화되지 않았습니다")
 
     try:
         # Treat the path parameter as the source/original date
@@ -305,7 +305,7 @@ def admin_ensure_date(
 
         # 3) Attempt download using configured CRAWL_URL with src_date override
         if not settings.CRAWL_URL:
-            raise HTTPException(status_code=400, detail="CRAWL_URL not configured")
+            raise HTTPException(status_code=400, detail="CRAWL_URL이 설정되지 않았습니다")
         result = download_if_changed(
             settings.CRAWL_URL,
             file_ext="csv",
@@ -332,7 +332,7 @@ def admin_ensure_date(
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    "CSV not found locally or via download"
+                    "로컬 또는 다운로드에서 CSV를 찾을 수 없습니다"
                     + (f" ({last_error})" if last_error else "")
                 ),
             )
@@ -353,8 +353,8 @@ def admin_ensure_date(
 
             return result_data
         except Exception as fe:
-            raise HTTPException(status_code=500, detail=f"supabase_upload_failed: {fe}")
+            raise HTTPException(status_code=500, detail=f"Supabase 업로드 실패: {fe}")
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"ensure failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"ensure 실패: {exc}") from exc

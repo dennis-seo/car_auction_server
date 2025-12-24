@@ -40,4 +40,4 @@ def get_dates(
     try:
         return list_available_dates(limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail="Failed to list dates") from exc
+        raise HTTPException(status_code=500, detail="날짜 목록 조회 실패") from exc

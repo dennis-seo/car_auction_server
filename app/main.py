@@ -2,8 +2,9 @@
 import sys
 import logging
 import threading
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # Allow running this file directly (IDE Run button)
 if __package__ is None or __package__ == "":
@@ -18,6 +19,7 @@ from app.api.v1.routes.vehicles import router as vehicles_router
 from app.api.v1.routes.vehicle_history import router as vehicle_history_router
 from app.api.v1.routes.auth import router as auth_router
 from app.core.config import settings
+from app.core.exceptions import AppException
 from app.crawler.downloader import download_if_changed
 try:
     from app.repositories import supabase_repo  # type: ignore
@@ -62,6 +64,25 @@ def create_app() -> FastAPI:
     app.include_router(vehicles_router, prefix="/api")
     app.include_router(vehicle_history_router, prefix="/api")
     app.include_router(auth_router, prefix="/api")
+
+    # 글로벌 예외 핸들러
+    @app.exception_handler(AppException)
+    async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
+        """커스텀 예외를 일관된 JSON 응답으로 변환"""
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.message},
+        )
+
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """처리되지 않은 예외를 500 응답으로 변환"""
+        error_logger = logging.getLogger("uvicorn.error")
+        error_logger.exception("Unhandled exception: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "서버 내부 오류가 발생했습니다"},
+        )
 
     # Kick off one crawl attempt on startup (non-blocking)
     # Use uvicorn's error logger so INFO lines show up under uvicorn
