@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import os
+import secrets
 import traceback
 from typing import Optional
 
@@ -42,6 +43,25 @@ def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     return None
 
 
+def _validate_admin_token(token: Optional[str]) -> None:
+    """
+    Admin 토큰 검증 (타이밍 공격 방지)
+
+    Args:
+        token: 클라이언트에서 전달받은 토큰
+
+    Raises:
+        HTTPException: 토큰이 없거나 유효하지 않은 경우
+    """
+    if not settings.ADMIN_TOKEN:
+        raise HTTPException(status_code=500, detail="ADMIN_TOKEN not configured")
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    # secrets.compare_digest로 타이밍 공격 방지
+    if not secrets.compare_digest(token, settings.ADMIN_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 @router.post("/admin/crawl")
 def admin_crawl(
     authorization: Optional[str] = Header(default=None),
@@ -52,8 +72,7 @@ def admin_crawl(
     force: bool = False,
 ):
     token = _extract_bearer_token(authorization) or x_admin_token
-    if not settings.ADMIN_TOKEN or token != settings.ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    _validate_admin_token(token)
 
     if not settings.CRAWL_URL:
         raise HTTPException(status_code=400, detail="CRAWL_URL not configured")
@@ -213,8 +232,7 @@ def admin_ensure_date(
     """
 
     token = _extract_bearer_token(authorization) or x_admin_token
-    if not settings.ADMIN_TOKEN or token != settings.ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    _validate_admin_token(token)
 
     if not settings.SUPABASE_ENABLED or supabase_repo is None:
         raise HTTPException(status_code=400, detail="Supabase is not enabled/configured")
