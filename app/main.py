@@ -28,18 +28,30 @@ except Exception:
 
 
 
+# 기본 허용 도메인 (CORS_ORIGINS 미설정 시 사용)
+DEFAULT_CORS_ORIGINS = [
+    "https://dennis-seo.github.io",  # GitHub Pages 프론트엔드
+    "http://localhost:3000",          # 로컬 개발 환경
+    "http://localhost:5173",          # Vite 기본 포트
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+]
+
+
 def _get_cors_origins() -> list[str]:
     """
     CORS 허용 도메인 목록 반환
 
     - CORS_ORIGINS 환경변수가 설정되면 해당 도메인만 허용
-    - 설정되지 않으면 모든 도메인 허용 (개발용)
+    - 설정되지 않으면 기본 도메인 목록 사용
+
+    Note: allow_credentials=True 사용 시 와일드카드(*)는 브라우저에서 허용되지 않음
     """
     origins_str = settings.CORS_ORIGINS.strip()
     if not origins_str:
-        # 개발 환경: 모든 도메인 허용
-        return ["*"]
-    # 프로덕션: 지정된 도메인만 허용
+        # 기본 도메인 목록 사용
+        return DEFAULT_CORS_ORIGINS
+    # 환경변수에서 지정된 도메인 사용
     return [origin.strip() for origin in origins_str.split(",") if origin.strip()]
 
 
