@@ -1,7 +1,7 @@
 """
 인증 유틸리티 모듈
 
-Google OAuth ID Token 검증 및 JWT 토큰 생성/검증
+Google OAuth ID Token/Access Token 검증 및 JWT 토큰 생성/검증
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
+import requests
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google.oauth2 import id_token
@@ -78,6 +79,68 @@ def verify_google_token(token: str) -> GoogleTokenPayload:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Google 토큰 검증 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+def verify_google_access_token(access_token: str) -> GoogleTokenPayload:
+    """
+    Google Access Token 검증 (userinfo 엔드포인트 사용)
+
+    useGoogleLogin 훅에서 반환하는 access_token을 검증합니다.
+
+    Args:
+        access_token: Google OAuth access token
+
+    Returns:
+        GoogleTokenPayload: 검증된 사용자 정보
+
+    Raises:
+        HTTPException: 토큰이 유효하지 않은 경우
+    """
+    try:
+        response = requests.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10
+        )
+
+        if response.status_code != 200:
+            logger.warning(
+                "Google access token verification failed: status=%d, response=%s",
+                response.status_code, response.text
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="유효하지 않은 Google access token입니다"
+            )
+
+        user_info = response.json()
+
+        # 필수 필드 확인
+        if not user_info.get("sub") or not user_info.get("email"):
+            logger.warning("Google userinfo missing required fields: %s", user_info)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Google 사용자 정보가 불완전합니다"
+            )
+
+        logger.info(
+            "Google access token verified: sub=%s email=%s",
+            user_info.get("sub"), user_info.get("email")
+        )
+
+        return GoogleTokenPayload(
+            sub=user_info["sub"],
+            email=user_info["email"],
+            name=user_info.get("name"),
+            picture=user_info.get("picture")
+        )
+
+    except requests.RequestException as e:
+        logger.error("Google userinfo request failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Google 사용자 정보 조회 중 오류가 발생했습니다: {str(e)}"
         )
 
 

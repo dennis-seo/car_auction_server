@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.utils.auth import (
     verify_google_token,
+    verify_google_access_token,
     create_access_token,
     get_current_user,
 )
@@ -24,8 +25,9 @@ router = APIRouter(prefix="/auth", tags=["인증"])
 # ===== Request/Response 스키마 =====
 
 class GoogleLoginRequest(BaseModel):
-    """Google 로그인 요청"""
-    id_token: str = Field(..., description="Google에서 받은 ID Token")
+    """Google 로그인 요청 (id_token 또는 access_token 중 하나 필수)"""
+    id_token: Optional[str] = Field(None, description="Google ID Token (GoogleLogin 컴포넌트)")
+    access_token: Optional[str] = Field(None, description="Google Access Token (useGoogleLogin 훅)")
 
 
 class AuthResponse(BaseModel):
@@ -54,21 +56,40 @@ AuthResponse.model_rebuild()
     "/google",
     response_model=AuthResponse,
     summary="Google 로그인",
-    description="Google ID Token을 검증하고 JWT 액세스 토큰을 발급합니다. 신규 사용자는 자동으로 회원가입됩니다."
+    description="""
+Google 토큰을 검증하고 JWT 액세스 토큰을 발급합니다. 신규 사용자는 자동으로 회원가입됩니다.
+
+**지원 토큰 타입:**
+- `id_token`: GoogleLogin 컴포넌트에서 제공하는 ID Token
+- `access_token`: useGoogleLogin 훅에서 제공하는 Access Token (커스텀 버튼 사용 시)
+
+둘 중 하나만 전송하면 됩니다.
+"""
 )
 async def google_login(request: GoogleLoginRequest):
     """
     Google OAuth 로그인
 
-    1. Google ID Token 검증
+    1. Google Token 검증 (id_token 또는 access_token)
     2. 사용자 조회 또는 생성
     3. JWT 액세스 토큰 발급
     """
     logger.info("Google login attempt started")
 
-    # Google 토큰 검증
-    google_user = verify_google_token(request.id_token)
-    logger.info("Google token verified for: %s", google_user.email)
+    # id_token과 access_token 둘 다 없는 경우
+    if not request.id_token and not request.access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="id_token 또는 access_token 중 하나를 제공해야 합니다"
+        )
+
+    # Google 토큰 검증 (id_token 우선)
+    if request.id_token:
+        google_user = verify_google_token(request.id_token)
+        logger.info("Google ID token verified for: %s", google_user.email)
+    else:
+        google_user = verify_google_access_token(request.access_token)
+        logger.info("Google access token verified for: %s", google_user.email)
 
     # 사용자 조회 또는 생성
     try:
