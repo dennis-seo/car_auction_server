@@ -26,16 +26,32 @@ except Exception:
 
 
 
+def _get_cors_origins() -> list[str]:
+    """
+    CORS 허용 도메인 목록 반환
+
+    - CORS_ORIGINS 환경변수가 설정되면 해당 도메인만 허용
+    - 설정되지 않으면 모든 도메인 허용 (개발용)
+    """
+    origins_str = settings.CORS_ORIGINS.strip()
+    if not origins_str:
+        # 개발 환경: 모든 도메인 허용
+        return ["*"]
+    # 프로덕션: 지정된 도메인만 허용
+    return [origin.strip() for origin in origins_str.split(",") if origin.strip()]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Car Auction API", version="1.0.0")
 
-    # CORS: mirror behavior from the simple server
+    # CORS 설정 (환경 변수 기반)
+    cors_origins = _get_cors_origins()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     # Mount routers (keep paths identical to current API)

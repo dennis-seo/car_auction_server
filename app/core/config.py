@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 10080  # 7일
 
+    # CORS 설정
+    # 콤마로 구분된 도메인 목록 (예: "https://app.example.com,https://admin.example.com")
+    # 빈 문자열이면 모든 도메인 허용 (개발용)
+    CORS_ORIGINS: str = ""
+
     # pydantic-settings v2 style config
     model_config = SettingsConfigDict(
         env_file=os.getenv("ENV_FILE", _PROJECT_ROOT_ENV),
