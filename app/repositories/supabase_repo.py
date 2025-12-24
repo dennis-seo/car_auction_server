@@ -198,3 +198,25 @@ def get_file_hash(date: str) -> Optional[str]:
     if isinstance(data, list) and data:
         return data[0].get("file_hash")
     return None
+
+
+def get_latest_file_hash() -> Optional[str]:
+    """가장 최근 저장된 데이터의 파일 해시 조회 (중복 데이터 방지용)"""
+    require_enabled()
+    sess = session()
+    url = f"{base_url()}/rest/v1/{_table_name()}"
+
+    params = {
+        "select": "file_hash,date",
+        "order": "date.desc",
+        "limit": "1",
+    }
+    resp = sess.get(url, headers=rest_headers(), params=params, timeout=30)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+
+    data = resp.json()
+    if isinstance(data, list) and data:
+        return data[0].get("file_hash")
+    return None

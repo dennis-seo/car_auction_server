@@ -93,6 +93,7 @@ def admin_crawl(
 
                 # 기존 파일 해시와 새 파일 해시 비교
                 existing_hash = None
+                latest_hash = None
                 new_hash = None
                 auction_records_exists = False
 
@@ -105,6 +106,13 @@ def admin_crawl(
                     except Exception:
                         existing_hash = None
 
+                    # 가장 최근 저장된 데이터의 해시도 조회 (중복 데이터 방지)
+                    try:
+                        latest_hash = supabase_repo.get_latest_file_hash()  # type: ignore[attr-defined]
+                        result["latest_file_hash"] = latest_hash
+                    except Exception:
+                        latest_hash = None
+
                     # auction_records 테이블에도 데이터가 있는지 확인
                     if auction_records_repo is not None:
                         try:
@@ -114,11 +122,24 @@ def admin_crawl(
                             auction_records_exists = False
                             result["auction_records_exists"] = False
 
-                # 해시가 같아도 auction_records에 데이터가 없으면 저장 진행
+                # 해시 비교: 해당 날짜 해시 또는 최근 해시와 동일하면 변경 없음
                 hash_changed = (existing_hash is None) or (new_hash != existing_hash)
+                is_duplicate_of_latest = (latest_hash is not None) and (new_hash == latest_hash)
                 needs_auction_records = not auction_records_exists
                 result["hash_changed"] = hash_changed
+                result["is_duplicate_of_latest"] = is_duplicate_of_latest
                 result["needs_auction_records"] = needs_auction_records
+
+                # 최근 데이터와 동일하면 저장하지 않음 (원본 사이트 미업데이트)
+                if is_duplicate_of_latest and not force:
+                    result["uploaded_to_supabase"] = False
+                    result["uploaded_to_auction_records"] = False
+                    result["skip_reason"] = "duplicate_of_latest_data"
+                    logger.info(
+                        "크롤링 스킵: 원본 데이터 미업데이트 (latest_hash와 동일), target_date=%s",
+                        target_date
+                    )
+                    return result
 
                 # auction_data 저장 (해시가 변경된 경우만)
                 should_upload_auction_data = (hash_changed or force) and content and filename
