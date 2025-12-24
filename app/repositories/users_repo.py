@@ -152,6 +152,29 @@ def update_last_login(user_id: str) -> None:
         logger.warning("Failed to update last_login_at for user %s", user_id)
 
 
+def update_last_logout(user_id: str) -> None:
+    """
+    마지막 로그아웃 시간 업데이트 (토큰 무효화용)
+
+    Args:
+        user_id: 사용자 UUID
+    """
+    require_enabled()
+    sess = session()
+    url = f"{base_url()}/rest/v1/{TABLE_NAME}"
+
+    params = {"id": f"eq.{user_id}"}
+    record = {"last_logout_at": datetime.now(timezone.utc).isoformat()}
+
+    headers = rest_headers(use_service=True, json_body=True)
+
+    resp = sess.patch(url, headers=headers, params=params, json=record, timeout=30)
+    if resp.status_code not in (200, 204):
+        logger.warning("Failed to update last_logout_at for user %s", user_id)
+    else:
+        logger.info("User logged out: id=%s", user_id)
+
+
 def update_profile(
     user_id: str,
     name: Optional[str] = None,

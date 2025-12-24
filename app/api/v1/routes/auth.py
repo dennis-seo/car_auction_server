@@ -130,3 +130,37 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         profile_image=user.get("profile_image"),
         created_at=user.get("created_at")
     )
+
+
+class LogoutResponse(BaseModel):
+    """로그아웃 응답"""
+    success: bool = Field(..., description="로그아웃 성공 여부")
+    message: str = Field(..., description="응답 메시지")
+
+
+@router.post(
+    "/logout",
+    response_model=LogoutResponse,
+    summary="로그아웃",
+    description="현재 로그인한 사용자를 로그아웃합니다. 이후 해당 토큰은 사용할 수 없습니다."
+)
+async def logout(current_user: dict = Depends(get_current_user)):
+    """
+    로그아웃 처리
+
+    현재 사용자의 last_logout_at 시간을 업데이트하여
+    기존에 발급된 모든 토큰을 무효화합니다.
+    """
+    try:
+        users_repo.update_last_logout(current_user["id"])
+        logger.info("User logged out: id=%s email=%s", current_user["id"], current_user["email"])
+        return LogoutResponse(
+            success=True,
+            message="로그아웃되었습니다"
+        )
+    except Exception as e:
+        logger.error("Logout failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="로그아웃 처리 중 오류가 발생했습니다"
+        )

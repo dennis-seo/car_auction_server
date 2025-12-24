@@ -164,6 +164,20 @@ async def get_current_user(
         )
 
     payload = decode_access_token(credentials.credentials)
+
+    # 로그아웃 여부 확인 (토큰 발급 시간 < 마지막 로그아웃 시간이면 무효)
+    from app.repositories import users_repo
+    user = users_repo.get_by_id(payload["sub"])
+    if user and user.get("last_logout_at"):
+        from datetime import datetime
+        token_iat = datetime.fromtimestamp(payload.get("iat", 0), tz=timezone.utc)
+        last_logout = datetime.fromisoformat(user["last_logout_at"].replace("Z", "+00:00"))
+        if token_iat < last_logout:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="로그아웃된 토큰입니다"
+            )
+
     return {
         "id": payload["sub"],
         "email": payload["email"]
