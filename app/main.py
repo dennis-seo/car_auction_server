@@ -35,9 +35,10 @@ except Exception:
 
 # 기본 허용 도메인 (CORS_ORIGINS 미설정 시 사용)
 DEFAULT_CORS_ORIGINS = [
-    "https://dennis-seo.github.io",  # GitHub Pages 프론트엔드
-    "http://localhost:3000",          # 로컬 개발 환경
-    "http://localhost:5173",          # Vite 기본 포트
+    "https://dennis-seo.github.io",      # GitHub Pages 프론트엔드
+    "https://car-auction-xi.vercel.app", # Vercel 프론트엔드
+    "http://localhost:3000",              # 로컬 개발 환경
+    "http://localhost:5173",              # Vite 기본 포트
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
 ]
