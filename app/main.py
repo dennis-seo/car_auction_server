@@ -21,6 +21,7 @@ from app.api.v1.routes.vehicle_history import router as vehicle_history_router
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.favorites import router as favorites_router
+from app.api.v1.routes.vehicle_favorites import router as vehicle_favorites_router
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.rate_limiter import limiter
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api")
     app.include_router(health_router, prefix="/api")
     app.include_router(favorites_router, prefix="/api")
+    app.include_router(vehicle_favorites_router, prefix="/api")
 
     # 글로벌 예외 핸들러
     @app.exception_handler(AppException)

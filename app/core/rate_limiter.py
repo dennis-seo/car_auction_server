@@ -24,7 +24,12 @@ class RateLimits:
     AUTH_LOGOUT = "10/minute"      # 로그아웃: IP당 분당 10회
     AUTH_REFRESH = "20/minute"     # 토큰 갱신: IP당 분당 20회
 
-    # 즐겨찾기 엔드포인트
+    # 즐겨찾기 엔드포인트 (제조사/모델/트림)
     FAVORITES_CREATE = "30/minute"  # 즐겨찾기 추가: IP당 분당 30회
     FAVORITES_LIST = "60/minute"    # 즐겨찾기 목록: IP당 분당 60회
     FAVORITES_DELETE = "30/minute"  # 즐겨찾기 삭제: IP당 분당 30회
+
+    # 차량 즐겨찾기 엔드포인트
+    VEHICLE_FAVORITES_CREATE = "30/minute"  # 차량 즐겨찾기 추가: IP당 분당 30회
+    VEHICLE_FAVORITES_LIST = "60/minute"    # 차량 즐겨찾기 목록: IP당 분당 60회
+    VEHICLE_FAVORITES_DELETE = "30/minute"  # 차량 즐겨찾기 삭제: IP당 분당 30회
