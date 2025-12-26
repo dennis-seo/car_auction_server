@@ -23,3 +23,8 @@ class RateLimits:
     AUTH_ME = "30/minute"          # 내 정보 조회: IP당 분당 30회
     AUTH_LOGOUT = "10/minute"      # 로그아웃: IP당 분당 10회
     AUTH_REFRESH = "20/minute"     # 토큰 갱신: IP당 분당 20회
+
+    # 즐겨찾기 엔드포인트
+    FAVORITES_CREATE = "30/minute"  # 즐겨찾기 추가: IP당 분당 30회
+    FAVORITES_LIST = "60/minute"    # 즐겨찾기 목록: IP당 분당 60회
+    FAVORITES_DELETE = "30/minute"  # 즐겨찾기 삭제: IP당 분당 30회

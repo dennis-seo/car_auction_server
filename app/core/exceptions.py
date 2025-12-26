@@ -71,3 +71,10 @@ class ExternalServiceError(AppException):
 
     status_code = 502
     default_message = "외부 서비스 오류가 발생했습니다"
+
+
+class ConflictError(AppException):
+    """리소스 충돌 (409)"""
+
+    status_code = 409
+    default_message = "리소스가 이미 존재합니다"

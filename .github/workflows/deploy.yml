@@ -55,3 +55,4 @@ jobs:
           SUPABASE_TABLE=${{ secrets.SUPABASE_TABLE }}
           GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
           JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+          CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
