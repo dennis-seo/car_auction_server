@@ -8,7 +8,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 from app.repositories.file_repo import list_auction_csv_files, resolve_csv_filepath
 from app.utils.bizdate import next_business_day, previous_source_candidates_for_mapped
-from app.schemas.auction import AuctionItem, AuctionResponse
+from app.schemas.auction import AuctionItem, AuctionResponse, Pagination
 from app.utils.model_matcher import match_car_model
 from app.utils.encoding import decode_csv_bytes
 
@@ -162,7 +162,16 @@ def _parse_csv_to_items(content: bytes) -> List[AuctionItem]:
 
 def _record_to_auction_item(record: Dict[str, object]) -> AuctionItem:
     """auction_records 레코드를 AuctionItem으로 변환"""
+    # id 필드 추출 (int로 변환)
+    record_id = record.get("id")
+    if record_id is not None:
+        try:
+            record_id = int(record_id)
+        except (ValueError, TypeError):
+            record_id = None
+
     return AuctionItem(
+        id=record_id,
         post_title=str(record.get("raw_post_title") or ""),
         sell_number=str(record.get("sell_number") or ""),
         car_number=str(record.get("car_number") or ""),
@@ -217,5 +226,103 @@ def get_auction_data_for_date(date: str) -> Optional[AuctionResponse]:
         date=date,
         source_filename=filename,
         row_count=len(items),
+        items=items,
+    )
+
+
+def get_auction_data_for_date_paginated(
+    date: str,
+    page: int = 1,
+    limit: int = 100,
+) -> Optional[AuctionResponse]:
+    """
+    날짜별 경매 데이터를 페이징하여 JSON 형식으로 반환
+
+    Args:
+        date: 경매 날짜 (YYMMDD 형식)
+        page: 페이지 번호 (1부터 시작)
+        limit: 페이지당 항목 수 (최대 500)
+
+    Returns:
+        AuctionResponse (pagination 포함) 또는 None
+    """
+    # 유효성 검사
+    if page < 1:
+        page = 1
+    if limit < 1:
+        limit = 1
+    if limit > 500:
+        limit = 500
+
+    # auction_records에서 페이징 조회 (우선)
+    if _auction_records_enabled():
+        try:
+            records, total = auction_records_repo.get_records_by_date_paginated(  # type: ignore[attr-defined]
+                date, page=page, limit=limit
+            )
+
+            # 데이터가 없으면 None 반환
+            if total == 0:
+                return None
+
+            items = [_record_to_auction_item(r) for r in records]
+
+            # source_filename 추출
+            filename = f"auction_data_{date}.csv"
+            if records:
+                filename = str(records[0].get("source_filename") or filename)
+
+            # 페이지네이션 정보 계산
+            total_pages = (total + limit - 1) // limit  # 올림 나눗셈
+            pagination = Pagination(
+                page=page,
+                limit=limit,
+                total_items=total,
+                total_pages=total_pages,
+                has_next=page < total_pages,
+                has_prev=page > 1,
+            )
+
+            return AuctionResponse(
+                date=date,
+                source_filename=filename,
+                row_count=len(items),
+                pagination=pagination,
+                items=items,
+            )
+        except Exception as e:
+            logger.warning("auction_records에서 페이징 조회 실패 (date=%s), fallback: %s", date, e)
+
+    # Fallback: 전체 CSV 파싱 후 페이징 적용
+    content, filename = get_csv_content_for_date(date)
+    if content is None:
+        return None
+
+    all_items = _parse_csv_to_items(content)
+    total = len(all_items)
+
+    if total == 0:
+        return None
+
+    # 페이지네이션 정보 계산
+    total_pages = (total + limit - 1) // limit
+    start_idx = (page - 1) * limit
+    end_idx = start_idx + limit
+    items = all_items[start_idx:end_idx]
+
+    pagination = Pagination(
+        page=page,
+        limit=limit,
+        total_items=total,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1,
+    )
+
+    return AuctionResponse(
+        date=date,
+        source_filename=filename,
+        row_count=len(items),
+        pagination=pagination,
         items=items,
     )

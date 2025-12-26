@@ -22,6 +22,7 @@ from app.schemas.vehicle_favorites import (
     VehicleFavoriteResponse,
     VehicleFavoriteWithVehicle,
     VehicleFavoriteListResponse,
+    VehicleFavoriteIdsResponse,
 )
 from app.schemas.auction import VehicleRecord
 from app.repositories import vehicle_favorites_repo
@@ -84,6 +85,40 @@ async def create_vehicle_favorite(
         raise ConflictError(message="이미 존재하는 즐겨찾기입니다")
 
     return VehicleFavoriteResponse(**result)
+
+
+@router.get(
+    "/ids",
+    response_model=VehicleFavoriteIdsResponse,
+    summary="차량 즐겨찾기 ID 목록 조회 (경량)",
+    description="""
+현재 로그인한 사용자의 즐겨찾기한 차량 record_id 목록만 반환합니다.
+
+## 용도
+- 차량 목록 렌더링 시 즐겨찾기 여부를 빠르게 판단
+- 차량 목록 API와 병렬 호출하여 초기 로딩 최적화
+""",
+    responses={
+        200: {"description": "즐겨찾기 ID 목록"},
+        401: {"description": "인증 필요"},
+        503: {"description": "Supabase 비활성화"},
+    },
+)
+@limiter.limit(RateLimits.VEHICLE_FAVORITES_LIST)
+async def list_vehicle_favorite_ids(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """차량 즐겨찾기 ID 목록 조회 (경량 API)"""
+    if not settings.SUPABASE_ENABLED:
+        raise ServiceUnavailableError(message="Supabase가 비활성화되어 있습니다")
+
+    record_ids = vehicle_favorites_repo.list_record_ids_by_user(user_id=current_user["id"])
+
+    return VehicleFavoriteIdsResponse(
+        record_ids=record_ids,
+        total=len(record_ids),
+    )
 
 
 @router.get(

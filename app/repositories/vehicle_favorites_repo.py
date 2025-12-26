@@ -241,3 +241,39 @@ def check_record_exists(record_id: int) -> bool:
 
     data = resp.json()
     return isinstance(data, list) and len(data) > 0
+
+
+def list_record_ids_by_user(user_id: str) -> List[int]:
+    """
+    사용자의 즐겨찾기 차량 record_id 목록만 조회 (경량 API)
+
+    Args:
+        user_id: 사용자 UUID
+
+    Returns:
+        record_id 리스트
+    """
+    require_enabled()
+    sess = session()
+    url = f"{base_url()}/rest/v1/{TABLE_NAME}"
+
+    params: Dict[str, str] = {
+        "select": "record_id",
+        "user_id": f"eq.{user_id}",
+        "order": "created_at.desc",
+    }
+
+    resp = sess.get(url, headers=rest_headers(), params=params, timeout=30)
+
+    if resp.status_code == 404:
+        return []
+    resp.raise_for_status()
+
+    data = resp.json()
+    if isinstance(data, list):
+        return [
+            row.get("record_id")
+            for row in data
+            if isinstance(row, dict) and row.get("record_id") is not None
+        ]
+    return []

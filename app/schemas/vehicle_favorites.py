@@ -39,3 +39,10 @@ class VehicleFavoriteListResponse(BaseModel):
 
     items: List[VehicleFavoriteWithVehicle] = Field(..., description="즐겨찾기 목록")
     total: int = Field(..., description="총 개수")
+
+
+class VehicleFavoriteIdsResponse(BaseModel):
+    """차량 즐겨찾기 ID 목록 응답 (경량 API)"""
+
+    record_ids: List[int] = Field(..., description="즐겨찾기한 차량 record_id 목록")
+    total: int = Field(..., description="총 개수")

@@ -381,6 +381,71 @@ def get_records_by_date(date: str) -> List[Dict[str, object]]:
     return []
 
 
+def get_records_by_date_paginated(
+    date: str,
+    page: int = 1,
+    limit: int = 100,
+) -> Tuple[List[Dict[str, object]], int]:
+    """
+    특정 날짜의 경매 레코드 페이징 조회
+
+    Args:
+        date: YYMMDD 또는 YYYY-MM-DD 형식
+        page: 페이지 번호 (1부터 시작)
+        limit: 페이지당 항목 수 (최대 500)
+
+    Returns:
+        (레코드 리스트, 전체 개수)
+    """
+    require_enabled()
+
+    # 유효성 검사
+    if page < 1:
+        page = 1
+    if limit < 1:
+        limit = 1
+    if limit > 500:
+        limit = 500
+
+    # YYMMDD -> YYYY-MM-DD 변환
+    auction_date = yymmdd_to_iso(date)
+
+    sess = session()
+    url = f"{base_url()}/rest/v1/{_TABLE_NAME}"
+
+    # offset 계산
+    offset = (page - 1) * limit
+
+    params = {
+        "select": "*",
+        "auction_date": f"eq.{auction_date}",
+        "order": "sell_number.asc",
+        "limit": str(limit),
+        "offset": str(offset),
+    }
+
+    headers = rest_headers(extra={"Prefer": "count=exact"})
+    resp = sess.get(url, headers=headers, params=params, timeout=60)
+
+    if resp.status_code == 404:
+        return [], 0
+    resp.raise_for_status()
+
+    # content-range 헤더에서 전체 개수 추출
+    total = 0
+    if "content-range" in resp.headers:
+        range_header = resp.headers["content-range"]
+        if "/" in range_header:
+            total_str = range_header.split("/")[-1]
+            if total_str != "*":
+                total = int(total_str)
+
+    data = resp.json()
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)], total
+    return [], total
+
+
 def get_csv_format(date: str) -> Optional[Tuple[bytes, str]]:
     """
     기존 API 호환을 위해 CSV 형식으로 데이터 반환

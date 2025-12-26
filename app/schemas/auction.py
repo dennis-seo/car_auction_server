@@ -2,6 +2,16 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class Pagination(BaseModel):
+    """페이지네이션 정보"""
+    page: int = Field(..., description="현재 페이지 번호 (1부터 시작)", example=1)
+    limit: int = Field(..., description="페이지당 항목 수", example=100)
+    total_items: int = Field(..., description="전체 항목 수", example=1000)
+    total_pages: int = Field(..., description="전체 페이지 수", example=10)
+    has_next: bool = Field(..., description="다음 페이지 존재 여부", example=True)
+    has_prev: bool = Field(..., description="이전 페이지 존재 여부", example=False)
+
+
 class VehicleRecord(BaseModel):
     """
     정규화된 차량 레코드
@@ -165,6 +175,7 @@ class ErrorResponse(BaseModel):
 
 class AuctionItem(BaseModel):
     """경매 차량 정보"""
+    id: Optional[int] = Field(None, description="차량 레코드 고유 ID (DB PK)", example=12345)
     post_title: Optional[str] = Field(None, alias="Post Title", description="게시글 제목")
     sell_number: str = Field("", description="출품 번호", example="0644")
     car_number: str = Field("", description="차량 번호", example="165하8219")
@@ -198,7 +209,8 @@ class AuctionResponse(BaseModel):
     """경매 데이터 응답"""
     date: str = Field(..., description="경매 날짜 (YYMMDD 형식)", example="250929")
     source_filename: str = Field(..., description="원본 파일명", example="auction_data_250929.csv")
-    row_count: int = Field(..., description="총 차량 수", example=150)
+    row_count: int = Field(..., description="총 차량 수 (현재 페이지)", example=150)
+    pagination: Optional[Pagination] = Field(None, description="페이지네이션 정보")
     items: List[AuctionItem] = Field(..., description="차량 목록")
 
 
