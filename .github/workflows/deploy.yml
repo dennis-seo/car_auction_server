@@ -54,3 +54,5 @@ jobs:
           SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_TABLE=${{ secrets.SUPABASE_TABLE }}
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
