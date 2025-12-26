@@ -122,9 +122,9 @@ def list_by_user(user_id: str) -> List[Dict[str, Any]]:
     sess = session()
     url = f"{base_url()}/rest/v1/{TABLE_NAME}"
 
-    # auction_records 테이블과 JOIN하여 차량 정보 포함
+    # 1. 즐겨찾기 목록 조회
     params: Dict[str, str] = {
-        "select": "*,auction_records(*)",
+        "select": "*",
         "user_id": f"eq.{user_id}",
         "order": "created_at.desc",
     }
@@ -136,9 +136,42 @@ def list_by_user(user_id: str) -> List[Dict[str, Any]]:
     resp.raise_for_status()
 
     data = resp.json()
-    if isinstance(data, list):
-        return [row for row in data if isinstance(row, dict)]
-    return []
+    if not isinstance(data, list) or not data:
+        return []
+
+    favorites = [row for row in data if isinstance(row, dict)]
+
+    # 2. record_id 목록 추출
+    record_ids = [f.get("record_id") for f in favorites if f.get("record_id") is not None]
+    if not record_ids:
+        return favorites
+
+    # 3. auction_records에서 차량 정보 조회
+    records_url = f"{base_url()}/rest/v1/auction_records"
+    records_params: Dict[str, str] = {
+        "select": "*",
+        "id": f"in.({','.join(str(rid) for rid in record_ids)})",
+    }
+
+    records_resp = sess.get(records_url, headers=rest_headers(), params=records_params, timeout=30)
+
+    records_map: Dict[int, Dict[str, Any]] = {}
+    if records_resp.status_code == 200:
+        records_data = records_resp.json()
+        if isinstance(records_data, list):
+            for record in records_data:
+                if isinstance(record, dict) and record.get("id"):
+                    records_map[record["id"]] = record
+
+    # 4. 즐겨찾기에 차량 정보 매핑
+    for favorite in favorites:
+        record_id = favorite.get("record_id")
+        if record_id and record_id in records_map:
+            favorite["auction_records"] = records_map[record_id]
+        else:
+            favorite["auction_records"] = None
+
+    return favorites
 
 
 def delete(favorite_id: str, user_id: str) -> bool:
