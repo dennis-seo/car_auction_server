@@ -2,10 +2,10 @@ fastapi==0.114.2
 uvicorn[standard]==0.30.6
 pydantic-settings==2.5.2
 requests==2.32.3
-google-cloud-firestore==2.21.0
 python-dateutil==2.9.0
 google-auth>=2.0.0
 PyJWT>=2.0.0
+slowapi>=0.1.9
 
 # Testing
 pytest==8.3.4

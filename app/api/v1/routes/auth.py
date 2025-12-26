@@ -6,7 +6,7 @@ Google OAuth 로그인 및 사용자 정보 조회
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app.utils.auth import (
@@ -16,6 +16,7 @@ from app.utils.auth import (
     get_current_user,
 )
 from app.repositories import users_repo
+from app.core.rate_limiter import limiter, RateLimits
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,12 @@ class GoogleLoginRequest(BaseModel):
     """Google 로그인 요청 (id_token 또는 access_token 중 하나 필수)"""
     id_token: Optional[str] = Field(None, description="Google ID Token (GoogleLogin 컴포넌트)")
     access_token: Optional[str] = Field(None, description="Google Access Token (useGoogleLogin 훅)")
+
+
+class TokenResponse(BaseModel):
+    """토큰 응답 (refresh용)"""
+    access_token: str = Field(..., description="JWT 액세스 토큰")
+    token_type: str = Field(default="bearer", description="토큰 타입")
 
 
 class AuthResponse(BaseModel):
@@ -64,9 +71,12 @@ Google 토큰을 검증하고 JWT 액세스 토큰을 발급합니다. 신규 �
 - `access_token`: useGoogleLogin 훅에서 제공하는 Access Token (커스텀 버튼 사용 시)
 
 둘 중 하나만 전송하면 됩니다.
+
+**Rate Limit:** IP당 분당 10회
 """
 )
-async def google_login(request: GoogleLoginRequest):
+@limiter.limit(RateLimits.AUTH_GOOGLE)
+async def google_login(request: Request, login_request: GoogleLoginRequest):
     """
     Google OAuth 로그인
 
@@ -77,18 +87,18 @@ async def google_login(request: GoogleLoginRequest):
     logger.info("Google login attempt started")
 
     # id_token과 access_token 둘 다 없는 경우
-    if not request.id_token and not request.access_token:
+    if not login_request.id_token and not login_request.access_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="id_token 또는 access_token 중 하나를 제공해야 합니다"
         )
 
     # Google 토큰 검증 (id_token 우선)
-    if request.id_token:
-        google_user = verify_google_token(request.id_token)
+    if login_request.id_token:
+        google_user = verify_google_token(login_request.id_token)
         logger.info("Google ID token verified for: %s", google_user.email)
     else:
-        google_user = verify_google_access_token(request.access_token)
+        google_user = verify_google_access_token(login_request.access_token)
         logger.info("Google access token verified for: %s", google_user.email)
 
     # 사용자 조회 또는 생성
@@ -130,9 +140,14 @@ async def google_login(request: GoogleLoginRequest):
     "/me",
     response_model=UserResponse,
     summary="내 정보 조회",
-    description="현재 로그인한 사용자의 정보를 조회합니다."
+    description="""
+현재 로그인한 사용자의 정보를 조회합니다.
+
+**Rate Limit:** IP당 분당 30회
+"""
 )
-async def get_me(current_user: dict = Depends(get_current_user)):
+@limiter.limit(RateLimits.AUTH_ME)
+async def get_me(request: Request, current_user: dict = Depends(get_current_user)):
     """
     현재 로그인한 사용자 정보 조회
     """
@@ -163,9 +178,14 @@ class LogoutResponse(BaseModel):
     "/logout",
     response_model=LogoutResponse,
     summary="로그아웃",
-    description="현재 로그인한 사용자를 로그아웃합니다. 이후 해당 토큰은 사용할 수 없습니다."
+    description="""
+현재 로그인한 사용자를 로그아웃합니다. 이후 해당 토큰은 사용할 수 없습니다.
+
+**Rate Limit:** IP당 분당 10회
+"""
 )
-async def logout(current_user: dict = Depends(get_current_user)):
+@limiter.limit(RateLimits.AUTH_LOGOUT)
+async def logout(request: Request, current_user: dict = Depends(get_current_user)):
     """
     로그아웃 처리
 
@@ -185,3 +205,38 @@ async def logout(current_user: dict = Depends(get_current_user)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="로그아웃 처리 중 오류가 발생했습니다"
         )
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    summary="토큰 갱신",
+    description="""
+현재 유효한 토큰으로 새 토큰을 발급받습니다.
+
+**사용 시나리오:**
+- 토큰 만료 전에 호출하여 세션을 유지
+- 클라이언트에서 주기적으로 호출하여 자동 갱신
+
+**주의:** 만료된 토큰으로는 갱신할 수 없습니다.
+
+**Rate Limit:** IP당 분당 20회
+"""
+)
+@limiter.limit(RateLimits.AUTH_REFRESH)
+async def refresh_token(request: Request, current_user: dict = Depends(get_current_user)):
+    """
+    토큰 갱신
+
+    현재 유효한 토큰으로 새 토큰을 발급받습니다.
+    토큰 만료 전에 호출하여 세션을 유지할 수 있습니다.
+    """
+    new_token = create_access_token(
+        user_id=current_user["id"],
+        email=current_user["email"]
+    )
+    logger.info("Token refreshed for user: id=%s email=%s", current_user["id"], current_user["email"])
+    return TokenResponse(
+        access_token=new_token,
+        token_type="bearer"
+    )

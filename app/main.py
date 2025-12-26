@@ -5,6 +5,7 @@ import threading
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 # Allow running this file directly (IDE Run button)
 if __package__ is None or __package__ == "":
@@ -18,8 +19,10 @@ from app.api.v1.routes.auction import router as auction_router
 from app.api.v1.routes.vehicles import router as vehicles_router
 from app.api.v1.routes.vehicle_history import router as vehicle_history_router
 from app.api.v1.routes.auth import router as auth_router
+from app.api.v1.routes.health import router as health_router
 from app.core.config import settings
 from app.core.exceptions import AppException
+from app.core.rate_limiter import limiter
 from app.crawler.downloader import download_if_changed
 try:
     from app.repositories import supabase_repo  # type: ignore
@@ -58,6 +61,19 @@ def _get_cors_origins() -> list[str]:
 def create_app() -> FastAPI:
     app = FastAPI(title="Car Auction API", version="1.0.0")
 
+    # Rate Limiter 설정
+    app.state.limiter = limiter
+
+    @app.exception_handler(RateLimitExceeded)
+    async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+        """Rate Limit 초과 시 한국어 응답 및 Retry-After 헤더 포함"""
+        retry_after = getattr(exc, "retry_after", 60)
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."},
+            headers={"Retry-After": str(retry_after)}
+        )
+
     # CORS 설정 (환경 변수 기반)
     cors_origins = _get_cors_origins()
     app.add_middleware(
@@ -76,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(vehicles_router, prefix="/api")
     app.include_router(vehicle_history_router, prefix="/api")
     app.include_router(auth_router, prefix="/api")
+    app.include_router(health_router, prefix="/api")
 
     # 글로벌 예외 핸들러
     @app.exception_handler(AppException)
