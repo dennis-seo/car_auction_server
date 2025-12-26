@@ -49,7 +49,6 @@ jobs:
           COMMIT_SHA=${{ github.sha }}
           ADMIN_TOKEN=${{ secrets.ADMIN_TOKEN }}
           CRAWL_URL=${{ secrets.CRAWL_URL && secrets.CRAWL_URL || 'https://www.xn--2q1bm5w1qdbqaq6cwvm.com/wp-content/themes/welcomecar-new/auction_data.csv' }}
-          FIRESTORE_ENABLED=${{ secrets.FIRESTORE_ENABLED }}
           SUPABASE_ENABLED=${{ secrets.SUPABASE_ENABLED }}
           SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

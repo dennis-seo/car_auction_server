@@ -27,18 +27,6 @@ class Settings(BaseSettings):
     SUPABASE_TABLE: str = "auction_data"
     SUPABASE_HISTORY_TABLE: str = ""
 
-    # Firestore integration (optional)
-    FIRESTORE_ENABLED: bool = False
-    FIRESTORE_COLLECTION: str = "auction_data"
-
-    # Common GCP settings for Firestore
-    GCP_PROJECT: str = ""
-    GCP_PROJECT_ID: str = ""
-    GCP_SA_KEY: str = ""
-
-    # Optional Google credentials (used by Firestore migration scripts)
-    GOOGLE_APPLICATION_CREDENTIALS: str = ""
-
     # Google OAuth 설정
     GOOGLE_CLIENT_ID: str = ""
 
