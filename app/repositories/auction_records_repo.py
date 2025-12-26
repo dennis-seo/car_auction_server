@@ -264,8 +264,8 @@ def list_dates(limit: Optional[int] = None) -> List[str]:
             if isinstance(data, list):
                 dates = [row.get("auction_date") if isinstance(row, dict) else row for row in data]
                 return [d for d in dates if isinstance(d, str)]
-    except Exception:
-        pass  # RPC 함수가 없으면 기존 방식으로 폴백
+    except Exception as e:
+        logger.debug("RPC distinct_auction_dates 호출 실패, 폴백 방식 사용: %s", e)
 
     # 폴백: 기존 페이지네이션 방식
     url = f"{base_url()}/rest/v1/{_TABLE_NAME}"

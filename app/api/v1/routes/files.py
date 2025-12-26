@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException, Path
+import logging
+
+from fastapi import APIRouter, Path
 from fastapi.responses import FileResponse, Response
 
-from app.services.csv_service import get_csv_path_for_date, get_csv_content_for_date
 from app.core.config import settings
+from app.core.exceptions import AppException, NotFoundError
+from app.services.csv_service import get_csv_path_for_date, get_csv_content_for_date
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Files"])
 
 
@@ -48,7 +51,7 @@ def get_csv(
         if settings.SUPABASE_ENABLED:
             content, filename = get_csv_content_for_date(date)
             if content is None:
-                raise HTTPException(status_code=404, detail="CSV 파일을 찾을 수 없습니다")
+                raise NotFoundError(message="CSV 파일을 찾을 수 없습니다")
             headers = {
                 "Content-Disposition": f"attachment; filename={filename}",
             }
@@ -57,14 +60,15 @@ def get_csv(
         # Local mode: serve file
         path, filename = get_csv_path_for_date(date)
         if path is None:
-            raise HTTPException(status_code=404, detail="CSV 파일을 찾을 수 없습니다")
+            raise NotFoundError(message="CSV 파일을 찾을 수 없습니다")
         return FileResponse(
             path,
             media_type="text/csv",
             filename=filename,
         )
-    except HTTPException:
+    except (NotFoundError, AppException):
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail="CSV 파일 조회 실패") from exc
+        logger.error("CSV 파일 조회 실패 (date=%s): %s", date, exc, exc_info=True)
+        raise AppException(message="CSV 파일 조회에 실패했습니다") from exc
 

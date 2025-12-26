@@ -5,14 +5,16 @@
 auction_records 테이블에서 정규화된 차량 데이터를 조회합니다.
 """
 
+import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, Path, Query
 
 from app.core.config import settings
+from app.core.exceptions import AppException, NotFoundError, ServiceUnavailableError
 from app.schemas.auction import ErrorResponse, VehicleListResponse, VehicleRecord
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Vehicles"])
 
 
@@ -172,7 +174,7 @@ def search_vehicles(
     ),
 ):
     if not settings.SUPABASE_ENABLED:
-        raise HTTPException(status_code=503, detail="Supabase가 비활성화되어 있습니다")
+        raise ServiceUnavailableError(message="Supabase가 비활성화되어 있습니다")
 
     try:
         from app.repositories import auction_records_repo
@@ -198,10 +200,11 @@ def search_vehicles(
             items=[VehicleRecord(**item) for item in items],
         )
 
-    except HTTPException:
+    except AppException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"검색 실패: {exc}") from exc
+        logger.error("차량 검색 실패: %s", exc, exc_info=True)
+        raise AppException(message="검색에 실패했습니다") from exc
 
 
 @router.get(
@@ -291,18 +294,19 @@ def get_vehicle(
     )
 ):
     if not settings.SUPABASE_ENABLED:
-        raise HTTPException(status_code=503, detail="Supabase가 비활성화되어 있습니다")
+        raise ServiceUnavailableError(message="Supabase가 비활성화되어 있습니다")
 
     try:
         from app.repositories import auction_records_repo
 
         record = auction_records_repo.get_by_id(record_id)
         if not record:
-            raise HTTPException(status_code=404, detail="차량을 찾을 수 없습니다")
+            raise NotFoundError(message="차량을 찾을 수 없습니다")
 
         return VehicleRecord(**record)
 
-    except HTTPException:
+    except AppException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"조회 실패: {exc}") from exc
+        logger.error("차량 조회 실패 (record_id=%s): %s", record_id, exc, exc_info=True)
+        raise AppException(message="조회에 실패했습니다") from exc

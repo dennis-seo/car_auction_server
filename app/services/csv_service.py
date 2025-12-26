@@ -1,8 +1,11 @@
 import csv
 import io
+import logging
 from typing import Dict, List, Optional, Tuple
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 from app.repositories.file_repo import list_auction_csv_files, resolve_csv_filepath
 from app.utils.bizdate import next_business_day, previous_source_candidates_for_mapped
 from app.schemas.auction import AuctionItem, AuctionResponse
@@ -39,8 +42,8 @@ def list_available_dates(limit: Optional[int] = None) -> list[str]:
     if _auction_records_enabled():
         try:
             return auction_records_repo.list_dates(limit=limit)  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("auction_records에서 날짜 목록 조회 실패, fallback 진행: %s", e)
 
     # auction_data 테이블에서 날짜 조회
     if _supabase_enabled():
@@ -49,8 +52,8 @@ def list_available_dates(limit: Optional[int] = None) -> list[str]:
             if limit and len(result) > limit:
                 result = result[:limit]
             return result
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("supabase에서 날짜 목록 조회 실패, 로컬 파일로 fallback: %s", e)
 
     # Fallback: 로컬 파일
     files = list_auction_csv_files()
@@ -62,7 +65,8 @@ def list_available_dates(limit: Optional[int] = None) -> list[str]:
             if len(src_date) == 6 and src_date.isdigit():
                 try:
                     mapped.add(next_business_day(src_date))
-                except Exception:
+                except Exception as e:
+                    logger.debug("날짜 변환 실패 (src_date=%s): %s", src_date, e)
                     continue
     result = sorted(mapped, reverse=True)
 
@@ -98,7 +102,8 @@ def get_csv_content_for_date(date: str) -> Tuple[Optional[bytes], str]:
                 return None, filename
             content, fname = res
             return content, fname or filename
-        except Exception:
+        except Exception as e:
+            logger.warning("supabase에서 CSV 조회 실패 (date=%s): %s", date, e)
             return None, filename
     # Local mode: read file content
     path, actual_filename = get_csv_path_for_date(date)
@@ -107,7 +112,8 @@ def get_csv_content_for_date(date: str) -> Tuple[Optional[bytes], str]:
     try:
         with open(path, "rb") as f:
             return f.read(), actual_filename
-    except Exception:
+    except Exception as e:
+        logger.warning("로컬 CSV 파일 읽기 실패 (path=%s): %s", path, e)
         return None, filename
 
 
@@ -197,8 +203,8 @@ def get_auction_data_for_date(date: str) -> Optional[AuctionResponse]:
                     row_count=len(items),
                     items=items,
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("auction_records에서 데이터 조회 실패 (date=%s), CSV fallback: %s", date, e)
 
     # Fallback: CSV 파싱 방식
     content, filename = get_csv_content_for_date(date)

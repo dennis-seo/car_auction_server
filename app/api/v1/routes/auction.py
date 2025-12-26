@@ -1,9 +1,12 @@
-from fastapi import APIRouter, HTTPException, Path
+import logging
 
-from app.services.csv_service import get_auction_data_for_date
+from fastapi import APIRouter, Path
+
+from app.core.exceptions import AppException, NotFoundError
 from app.schemas.auction import AuctionResponse
+from app.services.csv_service import get_auction_data_for_date
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Auction"])
 
 
@@ -31,9 +34,10 @@ def get_auction(
     try:
         result = get_auction_data_for_date(date)
         if result is None:
-            raise HTTPException(status_code=404, detail="해당 날짜의 데이터를 찾을 수 없습니다")
+            raise NotFoundError(message="해당 날짜의 데이터를 찾을 수 없습니다")
         return result
-    except HTTPException:
+    except (NotFoundError, AppException):
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail="데이터 조회 실패") from exc
+        logger.error("경매 데이터 조회 실패 (date=%s): %s", date, exc, exc_info=True)
+        raise AppException(message="데이터 조회에 실패했습니다") from exc

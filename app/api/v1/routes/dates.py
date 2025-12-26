@@ -1,10 +1,12 @@
+import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
+from app.core.exceptions import AppException
 from app.services.csv_service import list_available_dates
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Dates"])
 
 
@@ -40,4 +42,5 @@ def get_dates(
     try:
         return list_available_dates(limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail="날짜 목록 조회 실패") from exc
+        logger.error("날짜 목록 조회 실패: %s", exc, exc_info=True)
+        raise AppException(message="날짜 목록 조회에 실패했습니다") from exc

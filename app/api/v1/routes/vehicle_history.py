@@ -5,14 +5,16 @@
 인기 모델의 경우 특정 날짜에 데이터가 집중되는 문제를 해결합니다.
 """
 
+import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from app.core.config import settings
+from app.core.exceptions import AppException, ServiceUnavailableError
 from app.schemas.auction import AggregatedHistoryResponse, ErrorResponse
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Vehicle History"])
 
 
@@ -161,7 +163,7 @@ def get_aggregated_history(
     ),
 ):
     if not settings.SUPABASE_ENABLED:
-        raise HTTPException(status_code=503, detail="Supabase가 비활성화되어 있습니다")
+        raise ServiceUnavailableError(message="Supabase가 비활성화되어 있습니다")
 
     try:
         from app.repositories import auction_records_repo
@@ -179,7 +181,9 @@ def get_aggregated_history(
 
         return AggregatedHistoryResponse(**result)
 
-    except HTTPException:
+    except AppException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"집계 실패: {exc}") from exc
+        logger.error("시세 히스토리 집계 실패 (manufacturer_id=%s, model_id=%s): %s",
+                     manufacturer_id, model_id, exc, exc_info=True)
+        raise AppException(message="집계에 실패했습니다") from exc

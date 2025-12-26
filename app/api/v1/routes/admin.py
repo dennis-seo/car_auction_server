@@ -5,9 +5,16 @@ import secrets
 import traceback
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Header
 
 from app.core.config import settings
+from app.core.exceptions import (
+    AppException,
+    AuthenticationError,
+    ConfigurationError,
+    NotFoundError,
+    ValidationError,
+)
 from app.crawler.downloader import download_if_changed
 from app.utils.bizdate import next_business_day
 from app.repositories.file_repo import resolve_csv_filepath
@@ -51,15 +58,16 @@ def _validate_admin_token(token: Optional[str]) -> None:
         token: 클라이언트에서 전달받은 토큰
 
     Raises:
-        HTTPException: 토큰이 없거나 유효하지 않은 경우
+        ConfigurationError: ADMIN_TOKEN이 설정되지 않은 경우
+        AuthenticationError: 토큰이 없거나 유효하지 않은 경우
     """
     if not settings.ADMIN_TOKEN:
-        raise HTTPException(status_code=500, detail="ADMIN_TOKEN이 설정되지 않았습니다")
+        raise ConfigurationError(message="ADMIN_TOKEN이 설정되지 않았습니다")
     if not token:
-        raise HTTPException(status_code=401, detail="인증이 필요합니다")
+        raise AuthenticationError(message="인증이 필요합니다")
     # secrets.compare_digest로 타이밍 공격 방지
     if not secrets.compare_digest(token, settings.ADMIN_TOKEN):
-        raise HTTPException(status_code=401, detail="인증이 필요합니다")
+        raise AuthenticationError(message="인증이 필요합니다")
 
 
 def _save_to_auction_records(
@@ -118,7 +126,7 @@ def admin_crawl(
     _validate_admin_token(token)
 
     if not settings.CRAWL_URL:
-        raise HTTPException(status_code=400, detail="CRAWL_URL이 설정되지 않았습니다")
+        raise ValidationError(message="CRAWL_URL이 설정되지 않았습니다")
 
     try:
         # Decide the original/source date we intend to fetch/save for
@@ -236,8 +244,11 @@ def admin_crawl(
                 result["uploaded_to_supabase"] = False
                 result["supabase_error"] = str(fe)
         return result
+    except AppException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"크롤링 실패: {exc}") from exc
+        logger.error("크롤링 실패: %s", exc, exc_info=True)
+        raise AppException(message="크롤링에 실패했습니다") from exc
 
 
 @router.post("/admin/ensure/{date}")
@@ -258,7 +269,7 @@ def admin_ensure_date(
     _validate_admin_token(token)
 
     if not settings.SUPABASE_ENABLED or supabase_repo is None:
-        raise HTTPException(status_code=400, detail="Supabase가 활성화되지 않았습니다")
+        raise ValidationError(message="Supabase가 활성화되지 않았습니다")
 
     try:
         # Treat the path parameter as the source/original date
@@ -305,7 +316,7 @@ def admin_ensure_date(
 
         # 3) Attempt download using configured CRAWL_URL with src_date override
         if not settings.CRAWL_URL:
-            raise HTTPException(status_code=400, detail="CRAWL_URL이 설정되지 않았습니다")
+            raise ValidationError(message="CRAWL_URL이 설정되지 않았습니다")
         result = download_if_changed(
             settings.CRAWL_URL,
             file_ext="csv",
@@ -329,13 +340,10 @@ def admin_ensure_date(
             content = result.get("content")
 
         if not content:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    "로컬 또는 다운로드에서 CSV를 찾을 수 없습니다"
-                    + (f" ({last_error})" if last_error else "")
-                ),
-            )
+            error_detail = "로컬 또는 다운로드에서 CSV를 찾을 수 없습니다"
+            if last_error:
+                error_detail += f" ({last_error})"
+            raise NotFoundError(message=error_detail)
 
         try:
             final_filename = filename or f"auction_data_{src_date}.csv"
@@ -353,8 +361,10 @@ def admin_ensure_date(
 
             return result_data
         except Exception as fe:
-            raise HTTPException(status_code=500, detail=f"Supabase 업로드 실패: {fe}")
-    except HTTPException:
+            logger.error("Supabase 업로드 실패 (date=%s): %s", target_date, fe, exc_info=True)
+            raise AppException(message="Supabase 업로드에 실패했습니다") from fe
+    except AppException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"ensure 실패: {exc}") from exc
+        logger.error("ensure 실패 (date=%s): %s", date, exc, exc_info=True)
+        raise AppException(message="ensure 처리에 실패했습니다") from exc
