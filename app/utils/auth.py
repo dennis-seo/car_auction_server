@@ -214,10 +214,12 @@ async def get_current_user(
     """
     현재 인증된 사용자 정보를 반환하는 의존성
 
+    반환값에 role 필드가 포함됩니다.
+
     사용법:
         @router.get("/me")
         async def get_me(user: dict = Depends(get_current_user)):
-            return user
+            return user  # {"id": "...", "email": "...", "role": "free"}
     """
     if credentials is None:
         raise HTTPException(
@@ -228,9 +230,11 @@ async def get_current_user(
 
     payload = decode_access_token(credentials.credentials)
 
-    # 로그아웃 여부 확인 (토큰 발급 시간 < 마지막 로그아웃 시간이면 무효)
+    # 사용자 정보 조회 (role 포함)
     from app.repositories import users_repo
     user = users_repo.get_by_id(payload["sub"])
+
+    # 로그아웃 여부 확인 (토큰 발급 시간 < 마지막 로그아웃 시간이면 무효)
     if user and user.get("last_logout_at"):
         from datetime import datetime
         token_iat = datetime.fromtimestamp(payload.get("iat", 0), tz=timezone.utc)
@@ -241,9 +245,13 @@ async def get_current_user(
                 detail="로그아웃된 토큰입니다"
             )
 
+    # role 추출 (없으면 기본값 free)
+    user_role = user.get("role", "free") if user else "free"
+
     return {
         "id": payload["sub"],
-        "email": payload["email"]
+        "email": payload["email"],
+        "role": user_role
     }
 
 
@@ -254,15 +262,23 @@ async def get_current_user_optional(
     선택적 인증 - 토큰이 있으면 사용자 정보 반환, 없으면 None
 
     인증이 필수가 아닌 엔드포인트에서 사용
+    반환값에 role 필드가 포함됩니다. (비로그인 시 None 반환)
     """
     if credentials is None:
         return None
 
     try:
         payload = decode_access_token(credentials.credentials)
+
+        # 사용자 정보 조회 (role 포함)
+        from app.repositories import users_repo
+        user = users_repo.get_by_id(payload["sub"])
+        user_role = user.get("role", "free") if user else "free"
+
         return {
             "id": payload["sub"],
-            "email": payload["email"]
+            "email": payload["email"],
+            "role": user_role
         }
     except HTTPException:
         return None
