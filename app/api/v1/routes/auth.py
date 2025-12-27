@@ -50,6 +50,7 @@ class UserResponse(BaseModel):
     email: str = Field(..., description="이메일")
     name: Optional[str] = Field(None, description="이름")
     profile_image: Optional[str] = Field(None, description="프로필 이미지 URL")
+    role: str = Field(default="free", description="사용자 역할 (master, bidder, premium, free)")
     created_at: Optional[str] = Field(None, description="가입일")
 
 
@@ -131,6 +132,7 @@ async def google_login(request: Request, login_request: GoogleLoginRequest):
             email=user["email"],
             name=user.get("name"),
             profile_image=user.get("profile_image"),
+            role=user.get("role", "free"),
             created_at=user.get("created_at")
         )
     )
@@ -164,6 +166,7 @@ async def get_me(request: Request, current_user: dict = Depends(get_current_user
         email=user["email"],
         name=user.get("name"),
         profile_image=user.get("profile_image"),
+        role=user.get("role", "free"),
         created_at=user.get("created_at")
     )
 
